@@ -1,9 +1,7 @@
-use futures::prelude::*;
 use log::*;
 use std::net::SocketAddr;
 use tokio::net::{TcpListener, TcpStream};
 use tokio::prelude::*;
-use tokio::task;
 
 type Result<T> =
     std::result::Result<T, Box<dyn std::error::Error + Send + Sync>>;
