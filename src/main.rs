@@ -1,3 +1,4 @@
+use env_logger::Env;
 use log::*;
 use std::net::SocketAddr;
 use tokio::net::{TcpListener, TcpStream};
@@ -7,7 +8,8 @@ type Result<T> =
     std::result::Result<T, Box<dyn std::error::Error + Send + Sync>>;
 
 fn main() {
-    env_logger::init();
+    env_logger::Builder::from_env(Env::default().default_filter_or("info"))
+        .init();
 
     let mut rt = tokio::runtime::Runtime::new().unwrap();
     match rt.block_on(app()) {
@@ -24,7 +26,7 @@ async fn app() -> Result<()> {
     loop {
         let (socket, addr) = listener.accept().await?;
         tokio::spawn(async move {
-            debug!("Connection {} - opened", addr);
+            info!("Connection {} - opened", addr);
             let result = process(socket).await;
             log_result(result, addr);
         });
@@ -34,9 +36,9 @@ async fn app() -> Result<()> {
 fn log_result(closed_due_to_exit: Result<bool>, addr: SocketAddr) {
     match closed_due_to_exit {
         Ok(true) => {
-            debug!("Connection {} - closed by us due to 'exit' received", addr)
+            info!("Connection {} - closed by us due to 'exit' received", addr)
         }
-        Ok(false) => debug!(
+        Ok(false) => info!(
             "Connection {} - closed since client closed the socket",
             addr
         ),
