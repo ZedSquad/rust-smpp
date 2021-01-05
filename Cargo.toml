@@ -1,0 +1,23 @@
+[package]
+name = "smpp"
+version = "0.0.1"
+authors = ["Andy Balaam", "The Rust SMPP Developers"]
+license = "MIT OR Apache-2.0"
+readme = "README.md"
+# repository = ""
+# documentation = ""
+# homepage = ""
+description = """
+SMPP protocol support (client and server).
+"""
+keywords = ["smpp"]
+# categories = []
+edition = "2018"
+include = ["src/", "LICENSE-*", "README.md", "CHANGELOG.md"]
+
+[dependencies]
+env_logger = "0.7.*"
+futures = { version = "0.3.*" }
+log = "0.4.*"
+serde = { version = "1.0.118", default-features = false }
+tokio = { version = "0.2.*", features = ["full"] }
