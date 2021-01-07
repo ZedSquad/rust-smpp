@@ -1,34 +1,68 @@
 use env_logger::Env;
 use log::*;
 use std::net::SocketAddr;
+use std::sync::Arc;
+use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::{TcpListener, TcpStream};
-use tokio::prelude::*;
+use tokio::sync::{Semaphore, TryAcquireError};
 
 type Result<T> =
     std::result::Result<T, Box<dyn std::error::Error + Send + Sync>>;
 
+struct Config {
+    bind_address: String,
+    max_open_sockets: usize,
+}
+
 fn main() {
+    let config = Config {
+        bind_address: String::from("0.0.0.0:8080"),
+        max_open_sockets: 100,
+    };
+
     env_logger::Builder::from_env(Env::default().default_filter_or("info"))
         .init();
 
-    let mut rt = tokio::runtime::Runtime::new().unwrap();
-    match rt.block_on(app()) {
+    let res = launch_runtime(config);
+
+    match res {
         Ok(_) => info!("Done"),
         Err(e) => error!("Error launching: {}", e),
     };
 }
 
-async fn app() -> Result<()> {
+fn launch_runtime(config: Config) -> Result<()> {
+    let rt = tokio::runtime::Runtime::new()?;
+    rt.block_on(app(config))
+}
+
+async fn app(config: Config) -> Result<()> {
     info!("Starting");
-    let host_port = "0.0.0.0:8080";
-    let mut listener = TcpListener::bind(host_port).await?;
-    info!("Bound on {}", host_port);
+    let sem = Arc::new(Semaphore::new(config.max_open_sockets));
+    let listener = TcpListener::bind(&config.bind_address).await?;
+    info!("Bound on {}", config.bind_address);
+
     loop {
-        let (socket, addr) = listener.accept().await?;
+        let (tcp_stream, socket_addr) = listener.accept().await?;
+        let sem_clone = Arc::clone(&sem);
         tokio::spawn(async move {
-            info!("Connection {} - opened", addr);
-            let result = process(socket).await;
-            log_result(result, addr);
+            let aqu = sem_clone.try_acquire();
+            match aqu {
+                Ok(_guard) => {
+                    info!("Connection {} - opened", socket_addr);
+                    let result = process(tcp_stream).await;
+                    log_result(result, socket_addr);
+                }
+                Err(TryAcquireError::NoPermits) => {
+                    error!(
+                        "Refused connection {} - too many open sockets",
+                        socket_addr
+                    );
+                }
+                Err(TryAcquireError::Closed) => {
+                    error!("Unexpected error: semaphore closed");
+                }
+            }
         });
     }
 }
