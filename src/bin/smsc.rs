@@ -6,13 +6,10 @@ use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::{TcpListener, TcpStream};
 use tokio::sync::{Semaphore, TryAcquireError};
 
+use smpp::config::Config;
+
 type Result<T> =
     std::result::Result<T, Box<dyn std::error::Error + Send + Sync>>;
-
-struct Config {
-    bind_address: String,
-    max_open_sockets: usize,
-}
 
 fn main() {
     let config = Config {
