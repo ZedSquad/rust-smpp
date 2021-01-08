@@ -83,7 +83,7 @@ fn log_result(closed_due_to_exit: Result<bool>, addr: SocketAddr) {
 }
 
 async fn process(mut socket: TcpStream) -> Result<bool> {
-    let mut buf = [0; 1024];
+    let mut buf = vec![0; 1024];
     loop {
         let n = socket.read(&mut buf).await?;
         if n == 0 {
