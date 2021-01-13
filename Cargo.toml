@@ -21,3 +21,6 @@ futures = { version = "0.3.*" }
 log = "0.4.*"
 serde = { version = ">=1.0.118", default-features = false }
 tokio = { version = ">=1.0.1", features = ["full"] }
+
+[dev-dependencies]
+once_cell = "1.5.*"

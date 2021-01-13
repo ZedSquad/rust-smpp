@@ -13,7 +13,7 @@ pub fn run(config: SmscConfig) -> Result<()> {
     rt.block_on(app(config))
 }
 
-async fn app(config: SmscConfig) -> Result<()> {
+pub async fn app(config: SmscConfig) -> Result<()> {
     info!("Starting");
     let sem = Arc::new(Semaphore::new(config.max_open_sockets));
     let listener = TcpListener::bind(&config.bind_address).await?;
