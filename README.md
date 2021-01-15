@@ -20,6 +20,14 @@ To launch with detailed logging:
 RUST_LOG=DEBUG cargo run
 ```
 
+## Reference documentation
+
+Development focusses on SMPP v3.4, since that is in wide use.  Docs:
+
+* [SMPP Spec v3.4 Issue 1.2](https://smpp.org/SMPP_v3_4_Issue1_2.pdf)
+* [SMPP v3.4 Implementation Guide v1.0](https://smpp.org/smppv34_gsmumts_ig_v10.pdf)
+* [How to send and SMS using netcat](https://www.artificialworlds.net/blog/2020/08/10/how-to-send-an-sms-using-netcat-via-smpp/)
+
 ## Code of conduct
 
 We follow the [Rust code of conduct](https://www.rust-lang.org/conduct.html).

@@ -1,4 +1,5 @@
 use once_cell::sync::Lazy;
+use std::io::ErrorKind;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::TcpStream;
@@ -36,6 +37,7 @@ impl TestServer {
         let smsc_config = SmscConfig {
             bind_address: String::from(&server.bind_address),
             max_open_sockets: 2,
+            system_id: String::from("TestServer"),
         };
         server.runtime.spawn(smsc_app::app(smsc_config));
 
@@ -45,7 +47,7 @@ impl TestServer {
 
 /// A client that is able to connect to the server
 pub struct TestClient {
-    stream: TcpStream,
+    pub stream: TcpStream,
 }
 
 impl TestClient {
@@ -64,15 +66,46 @@ impl TestClient {
         })
     }
 
+    #[allow(dead_code)]
     pub async fn write_str(&mut self, output: &str) -> Result<()> {
         self.stream.write_all(output.as_bytes()).await?;
         Ok(())
     }
 
+    #[allow(dead_code)]
     pub async fn read_string(&mut self) -> Result<String> {
         let mut buf = vec![0; 1024];
         let n = self.stream.read(&mut buf).await?;
         let ret = String::from_utf8_lossy(&buf[..n]).to_string();
         Ok(ret)
     }
+
+    #[allow(dead_code)]
+    pub async fn read_n(&mut self, n: usize) -> Vec<u8> {
+        let mut bytes: Vec<u8> = Vec::with_capacity(n);
+
+        while bytes.len() < n {
+            match self.stream.read_u8().await {
+                Ok(byte) => bytes.push(byte),
+                Err(e) => {
+                    if e.kind() == ErrorKind::UnexpectedEof {
+                        println!("Error: Not enough bytes to read.");
+                        break;
+                    } else {
+                        println!("Error while reading: {}", e);
+                        break;
+                    }
+                }
+            }
+        }
+        bytes
+    }
+}
+
+#[allow(dead_code)]
+pub fn bytes_as_string(arr: &[u8]) -> String {
+    arr.iter()
+        .map(|x| format!("{:>02x}", x))
+        .collect::<Vec<String>>()
+        .join("")
 }
