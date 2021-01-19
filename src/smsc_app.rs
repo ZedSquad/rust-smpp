@@ -7,7 +7,7 @@ use tokio::io::AsyncReadExt;
 use tokio::net::{TcpListener, TcpStream};
 use tokio::sync::{Semaphore, TryAcquireError};
 
-use crate::pdu::{BindTransmitterRespPdu, CheckResult, Pdu};
+use crate::pdu::{BindTransmitterRespPdu, CheckOutcome, Pdu};
 use crate::result::Result;
 use crate::smsc_config::SmscConfig;
 
@@ -108,7 +108,7 @@ impl SmppConnection {
     fn parse_pdu(&mut self) -> Result<Option<Pdu>> {
         let mut buf = Cursor::new(&self.buffer[..]);
         match Pdu::check(&mut buf) {
-            CheckResult::Ok => {
+            Ok(CheckOutcome::Ok) => {
                 // Pdu::check moved us to the end, so position is length
                 let len = buf.position() as usize;
 
@@ -120,8 +120,8 @@ impl SmppConnection {
                 self.buffer.advance(len);
                 Ok(Some(pdu))
             }
-            CheckResult::Incomplete => Ok(None), // Try again when we have more
-            CheckResult::Error(e) => Err(e),     // Failed (e.g. too long)
+            Ok(CheckOutcome::Incomplete) => Ok(None), // Try again when we have more
+            Err(e) => Err(e),                         // Failed (e.g. too long)
         }
     }
 

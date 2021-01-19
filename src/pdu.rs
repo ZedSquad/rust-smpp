@@ -1,8 +1,14 @@
-use std::io::Cursor;
+use std::convert::TryFrom;
+use std::io::{BufRead, Cursor, ErrorKind};
 use tokio::io::AsyncWriteExt;
 use tokio::net::TcpStream;
 
 use crate::result::Result;
+
+// https://smpp.org/smppv34_gsmumts_ig_v10.pdf p11 states:
+// "... message_payload parameter which can hold up to a maximum of 64K ..."
+// So we guess no valid PDU can be longer than 70K octets.
+const MAX_PDU_LENGTH: u32 = 70000;
 
 #[derive(Debug)]
 pub enum Pdu {
@@ -10,10 +16,10 @@ pub enum Pdu {
     BindTransmitterResp(BindTransmitterRespPdu),
 }
 
-pub enum CheckResult {
+#[derive(Debug, PartialEq)]
+pub enum CheckOutcome {
     Ok,
     Incomplete,
-    Error(Box<dyn std::error::Error + Send + Sync>),
 }
 
 impl Pdu {
@@ -32,8 +38,8 @@ impl Pdu {
         }))
     }
 
-    pub fn check(bytes: &mut Cursor<&[u8]>) -> CheckResult {
-        CheckResult::Ok
+    pub fn check(bytes: &mut dyn BufRead) -> Result<CheckOutcome> {
+        check(bytes)
     }
 
     pub async fn write(&self, tcp_stream: &mut TcpStream) -> Result<()> {
@@ -42,6 +48,36 @@ impl Pdu {
             Pdu::BindTransmitterResp(pdu) => pdu.write(tcp_stream).await,
         }
     }
+}
+
+fn check(bytes: &mut dyn BufRead) -> Result<CheckOutcome> {
+    let mut len: [u8; 4] = [0; 4];
+    bytes.read_exact(&mut len)?;
+    let len = u32::from_be_bytes(len);
+
+    if len > MAX_PDU_LENGTH {
+        return Err(format!(
+            "PDU too long!  Length: {}, max allowed: {}",
+            len, MAX_PDU_LENGTH
+        )
+        .into());
+    }
+
+    check_can_read(bytes, len - 4)
+}
+
+fn check_can_read(bytes: &mut dyn BufRead, len: u32) -> Result<CheckOutcome> {
+    let len = usize::try_from(len)?;
+    // Is there a better way than allocating this vector?
+    let mut buf = Vec::with_capacity(len);
+    buf.resize(len, 0);
+    bytes
+        .read_exact(buf.as_mut_slice())
+        .map(|_| CheckOutcome::Ok)
+        .or_else(|e| match e.kind() {
+            ErrorKind::UnexpectedEof => Ok(CheckOutcome::Incomplete),
+            _ => Err(e.into()),
+        })
 }
 
 #[derive(Debug)]
@@ -81,5 +117,50 @@ impl BindTransmitterRespPdu {
         tcp_stream.write_all(self.system_id.as_bytes()).await?;
         tcp_stream.write_u8(0x00).await?;
         Ok(())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::io;
+
+    const BIND_TRANSMITTER_RESP_PDU_PLUS_EXTRA: &[u8; 0x1b + 0xa] =
+        b"\x00\x00\x00\x1b\x80\x00\x00\x02\x00\x00\x00\x00\x00\x00\x00\x02TestServer\0extrabytes";
+
+    #[test]
+    fn check_is_ok_if_more_bytes() {
+        let mut cursor = Cursor::new(&BIND_TRANSMITTER_RESP_PDU_PLUS_EXTRA[..]);
+        assert_eq!(Pdu::check(&mut cursor).unwrap(), CheckOutcome::Ok);
+    }
+
+    #[test]
+    fn check_is_ok_if_exact_bytes() {
+        let mut cursor =
+            Cursor::new(&BIND_TRANSMITTER_RESP_PDU_PLUS_EXTRA[..0x1b]);
+        assert_eq!(Pdu::check(&mut cursor).unwrap(), CheckOutcome::Ok);
+    }
+
+    #[test]
+    fn check_is_incomplete_if_fewer_bytes() {
+        let mut cursor =
+            Cursor::new(&BIND_TRANSMITTER_RESP_PDU_PLUS_EXTRA[..0x1a]);
+        assert_eq!(Pdu::check(&mut cursor).unwrap(), CheckOutcome::Incomplete);
+    }
+
+    #[test]
+    fn check_errors_if_read_error() {
+        fn e() -> io::Error {
+            io::Error::from_raw_os_error(22)
+        }
+        struct FailingRead {}
+        impl io::Read for FailingRead {
+            fn read(&mut self, _buf: &mut [u8]) -> io::Result<usize> {
+                Err(e())
+            }
+        }
+        let mut failing_read = io::BufReader::new(FailingRead {});
+        let res = Pdu::check(&mut failing_read).map_err(|e| e.to_string());
+        assert_eq!(res, Err(e().to_string()));
     }
 }
