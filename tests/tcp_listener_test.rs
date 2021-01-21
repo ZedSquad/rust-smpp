@@ -1,7 +1,8 @@
+use tokio::io::AsyncWriteExt;
+
 mod test_utils;
 
-use test_utils::TestClient;
-use test_utils::TestServer;
+use test_utils::{TestClient, TestServer, BIND_TRANSMITTER_PDU};
 
 #[test]
 fn listens_on_tcp_port() {
@@ -11,7 +12,7 @@ fn listens_on_tcp_port() {
         // When we connect
         let mut client = TestClient::connect_to(&server).await.unwrap();
         // Then we can write and read to it
-        client.write_str("foo").await.unwrap();
+        client.stream.write(BIND_TRANSMITTER_PDU).await.unwrap();
         let resp = client.read_string().await.unwrap();
         assert!(resp.len() > 0);
     })
@@ -25,10 +26,10 @@ fn stays_connected() {
         // When we connect
         let mut client = TestClient::connect_to(&server).await.unwrap();
         // Then we can write and read to it multiple times
-        client.write_str("foo").await.unwrap();
+        client.stream.write(BIND_TRANSMITTER_PDU).await.unwrap();
         let resp = client.read_string().await.unwrap();
         assert!(resp.len() > 0);
-        client.write_str("foo").await.unwrap();
+        client.stream.write(BIND_TRANSMITTER_PDU).await.unwrap();
         let resp = client.read_string().await.unwrap();
         assert!(resp.len() > 0);
     })
@@ -43,9 +44,9 @@ fn disconnects_clients_when_overloaded() {
         let mut client1 = TestClient::connect_to(&server).await.unwrap();
         let mut client2 = TestClient::connect_to(&server).await.unwrap();
         let mut client3 = TestClient::connect_to(&server).await.unwrap();
-        client1.write_str("foo").await.unwrap();
-        client2.write_str("foo").await.unwrap();
-        client3.write_str("foo").await.unwrap();
+        client1.stream.write(BIND_TRANSMITTER_PDU).await.unwrap();
+        client2.stream.write(BIND_TRANSMITTER_PDU).await.unwrap();
+        client3.stream.write(BIND_TRANSMITTER_PDU).await.unwrap();
         let resp1 = client1.read_string().await.unwrap();
         let resp2 = client2.read_string().await.unwrap();
         let resp3_or_err = client3.read_string().await;

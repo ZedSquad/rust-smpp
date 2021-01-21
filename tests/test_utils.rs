@@ -12,10 +12,14 @@ use smpp::smsc_config::SmscConfig;
 
 const TEST_BIND_URL: &str = "127.0.0.1";
 
-static PORT: Lazy<AtomicUsize> = Lazy::new(|| {
-    println!("initializing");
-    AtomicUsize::new(8080)
-});
+static PORT: Lazy<AtomicUsize> = Lazy::new(|| AtomicUsize::new(8080));
+
+pub const BIND_TRANSMITTER_PDU: &[u8; 0x29] =
+    b"\x00\x00\x00\x29\x00\x00\x00\x02\x00\x00\x00\x00\x00\x00\x00\x01esmeid\0password\0type\0\x34\x00\x00\0";
+
+#[allow(dead_code)]
+pub const BIND_TRANSMITTER_RESP_PDU: &[u8; 0x1b] =
+    b"\x00\x00\x00\x1b\x80\x00\x00\x02\x00\x00\x00\x00\x00\x00\x00\x01TestServer\0";
 
 fn next_port() -> usize {
     return PORT.fetch_add(1, Ordering::Relaxed);
@@ -29,6 +33,10 @@ pub struct TestServer {
 
 impl TestServer {
     pub fn start() -> Result<TestServer> {
+        let _ = env_logger::builder()
+            .filter_level(log::LevelFilter::Trace)
+            .is_test(true)
+            .try_init();
         let server = TestServer {
             runtime: tokio::runtime::Runtime::new()?,
             bind_address: format!("{}:{}", TEST_BIND_URL, next_port()),
@@ -89,11 +97,9 @@ impl TestClient {
                 Ok(byte) => bytes.push(byte),
                 Err(e) => {
                     if e.kind() == ErrorKind::UnexpectedEof {
-                        println!("Error: Not enough bytes to read.");
-                        break;
+                        panic!("Error: Not enough bytes to read.");
                     } else {
-                        println!("Error while reading: {}", e);
-                        break;
+                        panic!("Error while reading: {}", e);
                     }
                 }
             }

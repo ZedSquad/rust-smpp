@@ -8,6 +8,7 @@ use tokio::net::{TcpListener, TcpStream};
 use tokio::sync::{Semaphore, TryAcquireError};
 
 use crate::pdu::{BindTransmitterRespPdu, CheckOutcome, Pdu};
+use crate::pdu_types::Integer4;
 use crate::result::Result;
 use crate::smsc_config::SmscConfig;
 
@@ -66,14 +67,18 @@ fn log_result(closed_due_to_exit: Result<bool>, addr: SocketAddr) {
 async fn process(tcp_stream: TcpStream, config: &SmscConfig) -> Result<bool> {
     let mut connection = SmppConnection::new(tcp_stream);
     loop {
-        info!("<= {:?}", connection.read_pdu().await?.unwrap());
-        let response = Pdu::BindTransmitterResp(BindTransmitterRespPdu {
-            sequence_number: 0x01,
-            system_id: String::from(&config.system_id),
-        });
-        connection.write_pdu(&response).await?;
+        let pdu = connection.read_pdu().await?;
+        if let Some(pdu) = pdu {
+            info!("<= {:?}", pdu);
+            let response = Pdu::BindTransmitterResp(BindTransmitterRespPdu {
+                sequence_number: Integer4::new(0x01),
+                system_id: String::from(&config.system_id),
+            });
+            connection.write_pdu(&response).await?;
+        } else {
+            return Ok(false);
+        }
     }
-    //Ok(false) false means client closed, true means we closed
 }
 
 struct SmppConnection {

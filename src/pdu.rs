@@ -1,8 +1,10 @@
+use ascii::AsciiStr;
 use std::convert::TryFrom;
-use std::io::{BufRead, Cursor, ErrorKind};
+use std::io::{BufRead, Cursor, ErrorKind, Read};
 use tokio::io::AsyncWriteExt;
 use tokio::net::TcpStream;
 
+use crate::pdu_types::{Integer1, Integer4, ReadSelf};
 use crate::result::Result;
 
 // https://smpp.org/smppv34_gsmumts_ig_v10.pdf p11 states:
@@ -10,7 +12,10 @@ use crate::result::Result;
 // So we guess no valid PDU can be longer than 70K octets.
 const MAX_PDU_LENGTH: u32 = 70000;
 
-#[derive(Debug)]
+// We need at least a command_length and command_id, so 8 bytes
+const MIN_PDU_LENGTH: u32 = 8;
+
+#[derive(Debug, PartialEq)]
 pub enum Pdu {
     BindTransmitter(BindTransmitterPdu),
     BindTransmitterResp(BindTransmitterRespPdu),
@@ -24,21 +29,21 @@ pub enum CheckOutcome {
 
 impl Pdu {
     pub fn parse(bytes: &mut Cursor<&[u8]>) -> Result<Pdu> {
-        //let length = self.tcp_stream.read_u32().await?;
+        let _command_length = Integer4::read_self(bytes)?;
+        let command_id = Integer4::read_self(bytes)?;
 
-        Ok(Pdu::BindTransmitter(BindTransmitterPdu {
-            sequence_number: 0x12,
-            system_id: String::from(""),
-            password: String::from(""),
-            system_type: String::from(""),
-            interface_version: 0x99,
-            addr_ton: 0x99,
-            addr_npi: 0x99,
-            address_range: String::from("rng"),
-        }))
+        match command_id.value {
+            0x00000002 => BindTransmitterPdu::parse(bytes)
+                .map(|p| Pdu::BindTransmitter(p)),
+            0x80000002 => BindTransmitterRespPdu::parse(bytes)
+                .map(|p| Pdu::BindTransmitterResp(p)),
+            _ => {
+                Err(format!("Unknown command id: {}", command_id.value).into())
+            }
+        }
     }
 
-    pub fn check(bytes: &mut dyn BufRead) -> Result<CheckOutcome> {
+    pub fn check(bytes: &mut dyn Read) -> Result<CheckOutcome> {
         check(bytes)
     }
 
@@ -50,24 +55,36 @@ impl Pdu {
     }
 }
 
-fn check(bytes: &mut dyn BufRead) -> Result<CheckOutcome> {
-    let mut len: [u8; 4] = [0; 4];
-    bytes.read_exact(&mut len)?;
-    let len = u32::from_be_bytes(len);
+fn check(bytes: &mut dyn Read) -> Result<CheckOutcome> {
+    let command_length = Integer4::read_self(bytes);
+    match command_length {
+        Ok(command_length) => check_can_read(bytes, command_length.value),
+        Err(e) => match e.kind() {
+            ErrorKind::UnexpectedEof => Ok(CheckOutcome::Incomplete),
+            _ => Err(e.into()),
+        },
+    }
+}
 
-    if len > MAX_PDU_LENGTH {
+fn check_can_read(
+    bytes: &mut dyn Read,
+    command_length: u32,
+) -> Result<CheckOutcome> {
+    if command_length > MAX_PDU_LENGTH {
         return Err(format!(
             "PDU too long!  Length: {}, max allowed: {}",
-            len, MAX_PDU_LENGTH
+            command_length, MAX_PDU_LENGTH
+        )
+        .into());
+    } else if command_length < MIN_PDU_LENGTH {
+        return Err(format!(
+            "PDU too short!  Length: {}, min allowed: {}",
+            command_length, MIN_PDU_LENGTH
         )
         .into());
     }
 
-    check_can_read(bytes, len - 4)
-}
-
-fn check_can_read(bytes: &mut dyn BufRead, len: u32) -> Result<CheckOutcome> {
-    let len = usize::try_from(len)?;
+    let len = usize::try_from(command_length - 4)?;
     // Is there a better way than allocating this vector?
     let mut buf = Vec::with_capacity(len);
     buf.resize(len, 0);
@@ -80,15 +97,15 @@ fn check_can_read(bytes: &mut dyn BufRead, len: u32) -> Result<CheckOutcome> {
         })
 }
 
-#[derive(Debug)]
+#[derive(Debug, PartialEq)]
 pub struct BindTransmitterPdu {
-    pub sequence_number: u32,
+    pub sequence_number: Integer4,
     pub system_id: String,
     pub password: String,
     pub system_type: String,
-    pub interface_version: u8,
-    pub addr_ton: u8,
-    pub addr_npi: u8,
+    pub interface_version: Integer1,
+    pub addr_ton: Integer1,
+    pub addr_npi: Integer1,
     pub address_range: String,
 }
 
@@ -96,11 +113,42 @@ impl BindTransmitterPdu {
     async fn write(&self, _tcp_stream: &mut TcpStream) -> Result<()> {
         todo!()
     }
+
+    fn parse(bytes: &mut Cursor<&[u8]>) -> Result<BindTransmitterPdu> {
+        let command_status = Integer4::read_self(bytes)?;
+        let sequence_number = Integer4::read_self(bytes)?;
+        let system_id = read_c_octet_string(bytes, 16, "system_id")?;
+        let password = read_c_octet_string(bytes, 9, "password")?;
+        let system_type = read_c_octet_string(bytes, 13, "system_type")?;
+        let interface_version = Integer1::read_self(bytes)?;
+        let addr_ton = Integer1::read_self(bytes)?;
+        let addr_npi = Integer1::read_self(bytes)?;
+        let address_range = read_c_octet_string(bytes, 41, "address_range")?;
+
+        if command_status.value != 0x00 {
+            return Err(format!(
+                "command_status must be 0, but was {}",
+                command_status.value
+            )
+            .into());
+        }
+
+        Ok(BindTransmitterPdu {
+            sequence_number,
+            system_id,
+            password,
+            system_type,
+            interface_version,
+            addr_ton,
+            addr_npi,
+            address_range,
+        })
+    }
 }
 
-#[derive(Debug)]
+#[derive(Debug, PartialEq)]
 pub struct BindTransmitterRespPdu {
-    pub sequence_number: u32,
+    pub sequence_number: Integer4,
     pub system_id: String,
 }
 
@@ -112,12 +160,44 @@ impl BindTransmitterRespPdu {
             .await?; // length
         tcp_stream.write_u32(0x80000002).await?; // command_id: bind_transmitter_resp
         tcp_stream.write_u32(0).await?; // command_status
-        tcp_stream.write_u32(self.sequence_number).await?;
+        tcp_stream.write_u32(self.sequence_number.value).await?;
         // TODO: check allowed characters (on creation and/or here)
         tcp_stream.write_all(self.system_id.as_bytes()).await?;
         tcp_stream.write_u8(0x00).await?;
         Ok(())
     }
+
+    fn parse(_bytes: &mut Cursor<&[u8]>) -> Result<BindTransmitterRespPdu> {
+        Ok(BindTransmitterRespPdu {
+            sequence_number: Integer4::new(0x12),
+            system_id: String::from(""),
+        })
+    }
+}
+
+/// https://smpp.org/SMPP_v3_4_Issue1_2.pdf section 3.1
+///
+/// C-Octet String:
+/// A series of ASCII characters terminated with the NULL character.
+fn read_c_octet_string(
+    bytes: &mut dyn BufRead,
+    max_len: u64,
+    field_name: &str,
+) -> Result<String> {
+    let mut buf = Vec::new();
+    bytes.take(max_len).read_until(0x00, &mut buf)?;
+
+    if buf.last() != Some(&0x00) {
+        // Failed to read a NULL terminator before we ran out of characters
+        return Err(
+            format!("String value for {} was too long", field_name).into()
+        );
+    }
+
+    let buf = &buf[..(buf.len() - 1)]; // Remove trailing 0 byte
+    AsciiStr::from_ascii(buf)
+        .map(|s| String::from(s.as_str()))
+        .map_err(|e| e.into())
 }
 
 #[cfg(test)]
@@ -163,4 +243,32 @@ mod tests {
         let res = Pdu::check(&mut failing_read).map_err(|e| e.to_string());
         assert_eq!(res, Err(e().to_string()));
     }
+
+    #[test]
+    fn parse_valid_bind_transmitter() {
+        const BIND_TRANSMITTER_PDU_PLUS_EXTRA: &[u8; 0x2e + 0x6] =
+            b"\x00\x00\x00\x2e\x00\x00\x00\x02\x00\x00\x00\x00\x01\x02\x03\x44mysystem_ID\0pw$xx\0t_p_\0\x34\x13\x50rng\0foobar";
+
+        let mut cursor = Cursor::new(&BIND_TRANSMITTER_PDU_PLUS_EXTRA[..]);
+        assert_eq!(
+            Pdu::parse(&mut cursor).unwrap(),
+            Pdu::BindTransmitter(BindTransmitterPdu {
+                sequence_number: Integer4::new(0x01020344),
+                system_id: String::from("mysystem_ID"),
+                password: String::from("pw$xx"),
+                system_type: String::from("t_p_"),
+                interface_version: Integer1::new(0x34),
+                addr_ton: Integer1::new(0x13),
+                addr_npi: Integer1::new(0x50),
+                address_range: String::from("rng"),
+            })
+        );
+    }
+
+    // TODO: variable-length c-octet strings that are longer than max length
+    // TODO: max length INCLUDES the NULL character
+    // TODO: very long strings inside PDU with short length
+    // TODO: long length, short pdu
+    // TODO: long length, long pdu
+    // TODO: non-ascii characters in c-octet string
 }
