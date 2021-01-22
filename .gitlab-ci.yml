@@ -5,6 +5,8 @@ variables:
 
 run-test:
     stage: test
+    before_script:
+        - rustup component add rustfmt
     script:
         - rustc --version && cargo --version
         - cargo fmt -- --check
