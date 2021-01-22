@@ -8,7 +8,7 @@ use tokio::net::{TcpListener, TcpStream};
 use tokio::sync::{Semaphore, TryAcquireError};
 
 use crate::pdu::{BindTransmitterRespPdu, CheckOutcome, Pdu};
-use crate::pdu_types::Integer4;
+use crate::pdu_types::{COctetString, Integer4};
 use crate::result::Result;
 use crate::smsc_config::SmscConfig;
 
@@ -71,8 +71,8 @@ async fn process(tcp_stream: TcpStream, config: &SmscConfig) -> Result<bool> {
         if let Some(pdu) = pdu {
             info!("<= {:?}", pdu);
             let response = Pdu::BindTransmitterResp(BindTransmitterRespPdu {
-                sequence_number: Integer4::new(0x01),
-                system_id: String::from(&config.system_id),
+                sequence_number: Integer4::from(0x01),
+                system_id: COctetString::from(&config.system_id),
             });
             connection.write_pdu(&response).await?;
         } else {

@@ -1,10 +1,10 @@
 use ascii::AsciiStr;
 use std::convert::TryFrom;
-use std::io::{BufRead, Cursor, ErrorKind, Read};
+use std::io::{Cursor, ErrorKind, Read};
 use tokio::io::AsyncWriteExt;
 use tokio::net::TcpStream;
 
-use crate::pdu_types::{Integer1, Integer4, ReadSelf};
+use crate::pdu_types::{COctetString, Integer1, Integer4};
 use crate::result::Result;
 
 // https://smpp.org/smppv34_gsmumts_ig_v10.pdf p11 states:
@@ -29,8 +29,8 @@ pub enum CheckOutcome {
 
 impl Pdu {
     pub fn parse(bytes: &mut Cursor<&[u8]>) -> Result<Pdu> {
-        let _command_length = Integer4::read_self(bytes)?;
-        let command_id = Integer4::read_self(bytes)?;
+        let _command_length = Integer4::read(bytes)?;
+        let command_id = Integer4::read(bytes)?;
 
         match command_id.value {
             0x00000002 => BindTransmitterPdu::parse(bytes)
@@ -56,7 +56,7 @@ impl Pdu {
 }
 
 fn check(bytes: &mut dyn Read) -> Result<CheckOutcome> {
-    let command_length = Integer4::read_self(bytes);
+    let command_length = Integer4::read(bytes);
     match command_length {
         Ok(command_length) => check_can_read(bytes, command_length.value),
         Err(e) => match e.kind() {
@@ -100,13 +100,13 @@ fn check_can_read(
 #[derive(Debug, PartialEq)]
 pub struct BindTransmitterPdu {
     pub sequence_number: Integer4,
-    pub system_id: String,
-    pub password: String,
-    pub system_type: String,
+    pub system_id: COctetString,
+    pub password: COctetString,
+    pub system_type: COctetString,
     pub interface_version: Integer1,
     pub addr_ton: Integer1,
     pub addr_npi: Integer1,
-    pub address_range: String,
+    pub address_range: COctetString,
 }
 
 impl BindTransmitterPdu {
@@ -115,15 +115,15 @@ impl BindTransmitterPdu {
     }
 
     fn parse(bytes: &mut Cursor<&[u8]>) -> Result<BindTransmitterPdu> {
-        let command_status = Integer4::read_self(bytes)?;
-        let sequence_number = Integer4::read_self(bytes)?;
-        let system_id = read_c_octet_string(bytes, 16, "system_id")?;
-        let password = read_c_octet_string(bytes, 9, "password")?;
-        let system_type = read_c_octet_string(bytes, 13, "system_type")?;
-        let interface_version = Integer1::read_self(bytes)?;
-        let addr_ton = Integer1::read_self(bytes)?;
-        let addr_npi = Integer1::read_self(bytes)?;
-        let address_range = read_c_octet_string(bytes, 41, "address_range")?;
+        let command_status = Integer4::read(bytes)?;
+        let sequence_number = Integer4::read(bytes)?;
+        let system_id = COctetString::read(bytes, 16, "system_id")?;
+        let password = COctetString::read(bytes, 9, "password")?;
+        let system_type = COctetString::read(bytes, 13, "system_type")?;
+        let interface_version = Integer1::read(bytes)?;
+        let addr_ton = Integer1::read(bytes)?;
+        let addr_npi = Integer1::read(bytes)?;
+        let address_range = COctetString::read(bytes, 41, "address_range")?;
 
         if command_status.value != 0x00 {
             return Err(format!(
@@ -149,55 +149,32 @@ impl BindTransmitterPdu {
 #[derive(Debug, PartialEq)]
 pub struct BindTransmitterRespPdu {
     pub sequence_number: Integer4,
-    pub system_id: String,
+    pub system_id: COctetString,
 }
 
 impl BindTransmitterRespPdu {
     async fn write(&self, tcp_stream: &mut TcpStream) -> Result<()> {
         // TODO: check max length
         tcp_stream
-            .write_u32((16 + self.system_id.len() + 1) as u32)
+            .write_u32((16 + self.system_id.value.len() + 1) as u32)
             .await?; // length
         tcp_stream.write_u32(0x80000002).await?; // command_id: bind_transmitter_resp
         tcp_stream.write_u32(0).await?; // command_status
         tcp_stream.write_u32(self.sequence_number.value).await?;
         // TODO: check allowed characters (on creation and/or here)
-        tcp_stream.write_all(self.system_id.as_bytes()).await?;
+        tcp_stream
+            .write_all(self.system_id.value.as_bytes())
+            .await?;
         tcp_stream.write_u8(0x00).await?;
         Ok(())
     }
 
     fn parse(_bytes: &mut Cursor<&[u8]>) -> Result<BindTransmitterRespPdu> {
         Ok(BindTransmitterRespPdu {
-            sequence_number: Integer4::new(0x12),
-            system_id: String::from(""),
+            sequence_number: Integer4::from(0x12),
+            system_id: COctetString::from(AsciiStr::from_ascii("").unwrap()),
         })
     }
-}
-
-/// https://smpp.org/SMPP_v3_4_Issue1_2.pdf section 3.1
-///
-/// C-Octet String:
-/// A series of ASCII characters terminated with the NULL character.
-fn read_c_octet_string(
-    bytes: &mut dyn BufRead,
-    max_len: u64,
-    field_name: &str,
-) -> Result<String> {
-    let mut buf = Vec::new();
-    bytes.take(max_len).read_until(0x00, &mut buf)?;
-
-    if buf.last() != Some(&0x00) {
-        // Failed to read a NULL terminator before we ran out of characters
-        return Err(
-            format!("String value for {} was too long", field_name).into()
-        );
-    }
-
-    let buf = &buf[..(buf.len() - 1)]; // Remove trailing 0 byte
-    AsciiStr::from_ascii(buf)
-        .map(|s| String::from(s.as_str()))
-        .map_err(|e| e.into())
 }
 
 #[cfg(test)]
@@ -253,14 +230,22 @@ mod tests {
         assert_eq!(
             Pdu::parse(&mut cursor).unwrap(),
             Pdu::BindTransmitter(BindTransmitterPdu {
-                sequence_number: Integer4::new(0x01020344),
-                system_id: String::from("mysystem_ID"),
-                password: String::from("pw$xx"),
-                system_type: String::from("t_p_"),
-                interface_version: Integer1::new(0x34),
-                addr_ton: Integer1::new(0x13),
-                addr_npi: Integer1::new(0x50),
-                address_range: String::from("rng"),
+                sequence_number: Integer4::from(0x01020344),
+                system_id: COctetString::from(
+                    AsciiStr::from_ascii("mysystem_ID").unwrap()
+                ),
+                password: COctetString::from(
+                    AsciiStr::from_ascii("pw$xx").unwrap()
+                ),
+                system_type: COctetString::from(
+                    AsciiStr::from_ascii("t_p_").unwrap()
+                ),
+                interface_version: Integer1::from(0x34),
+                addr_ton: Integer1::from(0x13),
+                addr_npi: Integer1::from(0x50),
+                address_range: COctetString::from(
+                    AsciiStr::from_ascii("rng").unwrap()
+                ),
             })
         );
     }

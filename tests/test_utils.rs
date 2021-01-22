@@ -1,3 +1,4 @@
+use ascii::AsciiString;
 use once_cell::sync::Lazy;
 use std::io::ErrorKind;
 use std::sync::atomic::{AtomicUsize, Ordering};
@@ -45,7 +46,7 @@ impl TestServer {
         let smsc_config = SmscConfig {
             bind_address: String::from(&server.bind_address),
             max_open_sockets: 2,
-            system_id: String::from("TestServer"),
+            system_id: AsciiString::from_ascii("TestServer").unwrap(),
         };
         server.runtime.spawn(smsc_app::app(smsc_config));
 
