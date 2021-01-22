@@ -31,6 +31,10 @@ impl Integer1 {
         bytes.read_exact(&mut ret)?;
         Ok(Self { value: ret[0] })
     }
+
+    pub async fn write(&self, stream: &mut WriteStream) -> io::Result<()> {
+        stream.write_u8(self.value).await
+    }
 }
 
 /// https://smpp.org/SMPP_v3_4_Issue1_2.pdf section 3.1
@@ -130,6 +134,13 @@ mod tests {
         assert_eq!(Integer1::read(&mut bytes).unwrap(), Integer1::new(0x23));
     }
 
+    #[tokio::test]
+    async fn write_integer1() {
+        let mut buf: Vec<u8> = Vec::new();
+        Integer1::new(0xfe).write(&mut buf).await.unwrap();
+        assert_eq!(buf, vec![0xfe]);
+    }
+
     #[test]
     fn read_integer4() {
         let mut bytes = io::BufReader::new(&[0xf0, 0x00, 0x00, 0x23][..]);
@@ -137,6 +148,13 @@ mod tests {
             Integer4::read(&mut bytes).unwrap(),
             Integer4::new(0xf0000023)
         );
+    }
+
+    #[tokio::test]
+    async fn write_integer4() {
+        let mut buf: Vec<u8> = Vec::new();
+        Integer4::new(0x101010fe).write(&mut buf).await.unwrap();
+        assert_eq!(buf, vec![0x10, 0x10, 0x10, 0xfe]);
     }
 
     #[test]
@@ -148,9 +166,16 @@ mod tests {
         );
     }
 
+    #[tokio::test]
+    async fn write_coctetstring() {
+        let mut buf: Vec<u8> = Vec::new();
+        let val = COctetString::new(AsciiStr::from_ascii("abc").unwrap(), 16);
+        val.write(&mut buf).await.unwrap();
+        assert_eq!(buf, vec!['a' as u8, 'b' as u8, 'c' as u8, 0x00]);
+    }
+
     // TODO: read error
     // TODO: end of stream before end of string
     // TODO: missing \0
     // TODO: coctetstring too long
-    // TODO: writing
 }
