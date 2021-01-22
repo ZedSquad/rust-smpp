@@ -138,4 +138,19 @@ mod tests {
             Integer4::new(0xf0000023)
         );
     }
+
+    #[test]
+    fn read_coctetstring() {
+        let mut bytes = io::BufReader::new("foobar\0".as_bytes());
+        assert_eq!(
+            COctetString::read(&mut bytes, 20, "test_field").unwrap(),
+            COctetString::new(AsciiStr::from_ascii("foobar").unwrap(), 20)
+        );
+    }
+
+    // TODO: read error
+    // TODO: end of stream before end of string
+    // TODO: missing \0
+    // TODO: coctetstring too long
+    // TODO: writing
 }
