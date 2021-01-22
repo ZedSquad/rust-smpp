@@ -74,6 +74,12 @@ pub struct COctetString {
     value: AsciiString,
 }
 
+// To consider in future: types for e.g. system_id that are a COctetString
+// with a fixed, known length.  Currently we check it on creation, but
+// then forget it.  If the number of these things is small, it would be nice
+// to know for sure we had the right length later, e.g. when we are writing
+// it.
+
 impl COctetString {
     pub fn new(value: &AsciiStr, max_len: usize) -> Self {
         assert!(value.len() <= max_len);
