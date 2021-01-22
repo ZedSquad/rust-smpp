@@ -184,4 +184,5 @@ mod tests {
     // TODO: end of stream before end of string
     // TODO: missing \0
     // TODO: coctetstring too long
+    // TODO: coctetstring exactly right length
 }
