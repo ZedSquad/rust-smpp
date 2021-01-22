@@ -7,6 +7,7 @@ run-test:
     stage: test
     script:
         - rustc --version && cargo --version
+        - cargo fmt -- --check
         - cargo test --release --jobs 1
     cache:
         paths:
