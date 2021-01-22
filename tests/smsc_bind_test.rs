@@ -28,6 +28,7 @@ fn responds_to_bind_transmitter() {
     })
 }
 
+// TODO: change sequence number and pass without modifying hard-coded value
 // TODO: partial PDU provided (with length implying longer)
 // TODO: too-short length
 // TODO: too-long length
