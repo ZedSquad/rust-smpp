@@ -1,9 +1,8 @@
 use ascii::AsciiStr;
 use std::convert::TryFrom;
 use std::io::{Cursor, ErrorKind, Read};
-use tokio::net::TcpStream;
 
-use crate::pdu_types::{COctetString, Integer1, Integer4};
+use crate::pdu_types::{COctetString, Integer1, Integer4, WriteStream};
 use crate::result::Result;
 
 // https://smpp.org/smppv34_gsmumts_ig_v10.pdf p11 states:
@@ -51,7 +50,7 @@ impl Pdu {
         check(bytes)
     }
 
-    pub async fn write(&self, tcp_stream: &mut TcpStream) -> Result<()> {
+    pub async fn write(&self, tcp_stream: &mut WriteStream) -> Result<()> {
         match self {
             Pdu::BindTransmitter(pdu) => pdu.write(tcp_stream).await,
             Pdu::BindTransmitterResp(pdu) => pdu.write(tcp_stream).await,
@@ -114,7 +113,7 @@ pub struct BindTransmitterPdu {
 }
 
 impl BindTransmitterPdu {
-    async fn write(&self, _tcp_stream: &mut TcpStream) -> Result<()> {
+    async fn write(&self, _tcp_stream: &mut WriteStream) -> Result<()> {
         todo!()
     }
 
@@ -164,7 +163,7 @@ pub struct BindTransmitterRespPdu {
 }
 
 impl BindTransmitterRespPdu {
-    async fn write(&self, tcp_stream: &mut TcpStream) -> Result<()> {
+    async fn write(&self, tcp_stream: &mut WriteStream) -> Result<()> {
         let command_length =
             Integer4::new((16 + self.system_id.len() + 1) as u32);
         let command_id = Integer4::new(0x80000002); // bind_transmitter_resp

@@ -8,6 +8,8 @@ use tokio::io::{AsyncWrite, AsyncWriteExt};
 // COctetStringHex
 // OctetString
 
+pub type WriteStream = dyn AsyncWrite + Send + Unpin;
+
 /// https://smpp.org/SMPP_v3_4_Issue1_2.pdf section 3.1
 ///
 /// Integer: (1 byte)
@@ -54,10 +56,7 @@ impl Integer4 {
         })
     }
 
-    pub async fn write(
-        &self,
-        stream: &mut (dyn AsyncWrite + Unpin + Send),
-    ) -> io::Result<()> {
+    pub async fn write(&self, stream: &mut WriteStream) -> io::Result<()> {
         stream.write_u32(self.value).await
     }
 }
@@ -107,10 +106,7 @@ impl COctetString {
             })
     }
 
-    pub async fn write(
-        &self,
-        stream: &mut (dyn AsyncWrite + Unpin + Send),
-    ) -> io::Result<()> {
+    pub async fn write(&self, stream: &mut WriteStream) -> io::Result<()> {
         stream.write_all(self.value.as_bytes()).await?;
         stream.write_u8(0u8).await
     }
