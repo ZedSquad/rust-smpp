@@ -1,7 +1,6 @@
 use ascii::AsciiStr;
 use std::convert::TryFrom;
 use std::io::{Cursor, ErrorKind, Read};
-use tokio::io::AsyncWriteExt;
 use tokio::net::TcpStream;
 
 use crate::pdu_types::{COctetString, Integer1, Integer4};
@@ -10,10 +9,15 @@ use crate::result::Result;
 // https://smpp.org/smppv34_gsmumts_ig_v10.pdf p11 states:
 // "... message_payload parameter which can hold up to a maximum of 64K ..."
 // So we guess no valid PDU can be longer than 70K octets.
-const MAX_PDU_LENGTH: u32 = 70000;
+const MAX_PDU_LENGTH: usize = 70000;
 
 // We need at least a command_length and command_id, so 8 bytes
-const MIN_PDU_LENGTH: u32 = 8;
+const MIN_PDU_LENGTH: usize = 8;
+
+pub const MAX_LENGTH_SYSTEM_ID: usize = 16;
+const MAX_LENGTH_PASSWORD: usize = 9;
+const MAX_LENGTH_SYSTEM_TYPE: usize = 13;
+const MAX_LENGTH_ADDRESS_RANGE: usize = 41;
 
 #[derive(Debug, PartialEq)]
 pub enum Pdu {
@@ -70,13 +74,13 @@ fn check_can_read(
     bytes: &mut dyn Read,
     command_length: u32,
 ) -> Result<CheckOutcome> {
-    if command_length > MAX_PDU_LENGTH {
+    if (command_length as usize) > MAX_PDU_LENGTH {
         return Err(format!(
             "PDU too long!  Length: {}, max allowed: {}",
             command_length, MAX_PDU_LENGTH
         )
         .into());
-    } else if command_length < MIN_PDU_LENGTH {
+    } else if (command_length as usize) < MIN_PDU_LENGTH {
         return Err(format!(
             "PDU too short!  Length: {}, min allowed: {}",
             command_length, MIN_PDU_LENGTH
@@ -117,13 +121,20 @@ impl BindTransmitterPdu {
     fn parse(bytes: &mut Cursor<&[u8]>) -> Result<BindTransmitterPdu> {
         let command_status = Integer4::read(bytes)?;
         let sequence_number = Integer4::read(bytes)?;
-        let system_id = COctetString::read(bytes, 16, "system_id")?;
-        let password = COctetString::read(bytes, 9, "password")?;
-        let system_type = COctetString::read(bytes, 13, "system_type")?;
+        let system_id =
+            COctetString::read(bytes, MAX_LENGTH_SYSTEM_ID, "system_id")?;
+        let password =
+            COctetString::read(bytes, MAX_LENGTH_PASSWORD, "password")?;
+        let system_type =
+            COctetString::read(bytes, MAX_LENGTH_SYSTEM_TYPE, "system_type")?;
         let interface_version = Integer1::read(bytes)?;
         let addr_ton = Integer1::read(bytes)?;
         let addr_npi = Integer1::read(bytes)?;
-        let address_range = COctetString::read(bytes, 41, "address_range")?;
+        let address_range = COctetString::read(
+            bytes,
+            MAX_LENGTH_ADDRESS_RANGE,
+            "address_range",
+        )?;
 
         if command_status.value != 0x00 {
             return Err(format!(
@@ -154,25 +165,27 @@ pub struct BindTransmitterRespPdu {
 
 impl BindTransmitterRespPdu {
     async fn write(&self, tcp_stream: &mut TcpStream) -> Result<()> {
-        // TODO: check max length
-        tcp_stream
-            .write_u32((16 + self.system_id.value.len() + 1) as u32)
-            .await?; // length
-        tcp_stream.write_u32(0x80000002).await?; // command_id: bind_transmitter_resp
-        tcp_stream.write_u32(0).await?; // command_status
-        tcp_stream.write_u32(self.sequence_number.value).await?;
-        // TODO: check allowed characters (on creation and/or here)
-        tcp_stream
-            .write_all(self.system_id.value.as_bytes())
-            .await?;
-        tcp_stream.write_u8(0x00).await?;
+        let command_length =
+            Integer4::new((16 + self.system_id.len() + 1) as u32);
+        let command_id = Integer4::new(0x80000002); // bind_transmitter_resp
+        let command_status = Integer4::new(0);
+
+        command_length.write(tcp_stream).await?;
+        command_id.write(tcp_stream).await?;
+        command_status.write(tcp_stream).await?;
+        self.sequence_number.write(tcp_stream).await?;
+        self.system_id.write(tcp_stream).await?;
+
         Ok(())
     }
 
     fn parse(_bytes: &mut Cursor<&[u8]>) -> Result<BindTransmitterRespPdu> {
         Ok(BindTransmitterRespPdu {
-            sequence_number: Integer4::from(0x12),
-            system_id: COctetString::from(AsciiStr::from_ascii("").unwrap()),
+            sequence_number: Integer4::new(0x12),
+            system_id: COctetString::new(
+                AsciiStr::from_ascii("").unwrap(),
+                MAX_LENGTH_SYSTEM_ID,
+            ),
         })
     }
 }
@@ -230,21 +243,25 @@ mod tests {
         assert_eq!(
             Pdu::parse(&mut cursor).unwrap(),
             Pdu::BindTransmitter(BindTransmitterPdu {
-                sequence_number: Integer4::from(0x01020344),
-                system_id: COctetString::from(
-                    AsciiStr::from_ascii("mysystem_ID").unwrap()
+                sequence_number: Integer4::new(0x01020344),
+                system_id: COctetString::new(
+                    AsciiStr::from_ascii("mysystem_ID").unwrap(),
+                    MAX_LENGTH_SYSTEM_ID
                 ),
-                password: COctetString::from(
-                    AsciiStr::from_ascii("pw$xx").unwrap()
+                password: COctetString::new(
+                    AsciiStr::from_ascii("pw$xx").unwrap(),
+                    MAX_LENGTH_PASSWORD
                 ),
-                system_type: COctetString::from(
-                    AsciiStr::from_ascii("t_p_").unwrap()
+                system_type: COctetString::new(
+                    AsciiStr::from_ascii("t_p_").unwrap(),
+                    MAX_LENGTH_SYSTEM_TYPE
                 ),
-                interface_version: Integer1::from(0x34),
-                addr_ton: Integer1::from(0x13),
-                addr_npi: Integer1::from(0x50),
-                address_range: COctetString::from(
-                    AsciiStr::from_ascii("rng").unwrap()
+                interface_version: Integer1::new(0x34),
+                addr_ton: Integer1::new(0x13),
+                addr_npi: Integer1::new(0x50),
+                address_range: COctetString::new(
+                    AsciiStr::from_ascii("rng").unwrap(),
+                    MAX_LENGTH_ADDRESS_RANGE
                 ),
             })
         );

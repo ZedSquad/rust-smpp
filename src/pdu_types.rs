@@ -1,6 +1,7 @@
 use ascii::{AsciiStr, AsciiString};
 use std::io;
 use std::io::{BufRead, Read};
+use tokio::io::{AsyncWrite, AsyncWriteExt};
 
 // TODO: PDU Types, from spec section 3.1
 // COctetStringDecimal
@@ -18,7 +19,7 @@ pub struct Integer1 {
 }
 
 impl Integer1 {
-    pub fn from(value: u8) -> Self {
+    pub fn new(value: u8) -> Self {
         Self { value }
     }
 
@@ -41,7 +42,7 @@ pub struct Integer4 {
 }
 
 impl Integer4 {
-    pub fn from(value: u32) -> Self {
+    pub fn new(value: u32) -> Self {
         Self { value }
     }
 
@@ -52,6 +53,13 @@ impl Integer4 {
             value: u32::from_be_bytes(ret),
         })
     }
+
+    pub async fn write(
+        &self,
+        stream: &mut (dyn AsyncWrite + Unpin + Send),
+    ) -> io::Result<()> {
+        stream.write_u32(self.value).await
+    }
 }
 
 /// https://smpp.org/SMPP_v3_4_Issue1_2.pdf section 3.1
@@ -60,11 +68,12 @@ impl Integer4 {
 /// A series of ASCII characters terminated with the NULL character.
 #[derive(Debug, PartialEq)]
 pub struct COctetString {
-    pub value: AsciiString,
+    value: AsciiString,
 }
 
 impl COctetString {
-    pub fn from(value: &AsciiStr) -> Self {
+    pub fn new(value: &AsciiStr, max_len: usize) -> Self {
+        assert!(value.len() <= max_len);
         Self {
             value: AsciiString::from(value),
         }
@@ -72,38 +81,47 @@ impl COctetString {
 
     pub fn read(
         bytes: &mut dyn BufRead,
-        max_len: u64,
+        max_len: usize,
         field_name: &str,
     ) -> io::Result<Self> {
         let mut buf = Vec::new();
-        bytes.take(max_len).read_until(0x00, &mut buf)?;
+        bytes.take(max_len as u64).read_until(0x00, &mut buf)?;
 
         if buf.last() != Some(&0x00) {
             // Failed to read a NULL terminator before we ran out of characters
-            return Err(io::Error::new::<String>(
-                io::ErrorKind::InvalidData,
-                format!(
-                    "String value for {} is too long.  Max length is {}.",
-                    field_name, max_len
-                )
-                .into(),
-            ));
+            return Err(inv(format!(
+                "String value for {} is too long.  Max length is {}.",
+                field_name, max_len
+            )));
         }
 
         let buf = &buf[..(buf.len() - 1)]; // Remove trailing 0 byte
         AsciiStr::from_ascii(buf)
-            .map(|s| COctetString::from(s))
+            .map(|s| COctetString::new(s, max_len))
             .map_err(|e| {
-                io::Error::new::<String>(
-                    io::ErrorKind::InvalidData,
-                    format!(
+                inv(format!(
                     "String value of {} is not ASCII (valid up to byte {}).",
-                    field_name, e.valid_up_to()
-                )
-                    .into(),
-                )
+                    field_name,
+                    e.valid_up_to()
+                ))
             })
     }
+
+    pub async fn write(
+        &self,
+        stream: &mut (dyn AsyncWrite + Unpin + Send),
+    ) -> io::Result<()> {
+        stream.write_all(self.value.as_bytes()).await?;
+        stream.write_u8(0u8).await
+    }
+
+    pub fn len(&self) -> usize {
+        self.value.len()
+    }
+}
+
+fn inv(message: String) -> io::Error {
+    io::Error::new::<String>(io::ErrorKind::InvalidData, message.into())
 }
 
 #[cfg(test)]
@@ -113,7 +131,7 @@ mod tests {
     #[test]
     fn read_integer1() {
         let mut bytes = io::BufReader::new(&[0x23][..]);
-        assert_eq!(Integer1::read(&mut bytes).unwrap(), Integer1::from(0x23));
+        assert_eq!(Integer1::read(&mut bytes).unwrap(), Integer1::new(0x23));
     }
 
     #[test]
@@ -121,7 +139,7 @@ mod tests {
         let mut bytes = io::BufReader::new(&[0xf0, 0x00, 0x00, 0x23][..]);
         assert_eq!(
             Integer4::read(&mut bytes).unwrap(),
-            Integer4::from(0xf0000023)
+            Integer4::new(0xf0000023)
         );
     }
 }
