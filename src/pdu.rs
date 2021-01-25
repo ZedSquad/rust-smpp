@@ -192,7 +192,7 @@ impl BindTransmitterRespPdu {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::io;
+    use crate::unittest_utils::FailingRead;
 
     const BIND_TRANSMITTER_RESP_PDU_PLUS_EXTRA: &[u8; 0x1b + 0xa] =
         b"\x00\x00\x00\x1b\x80\x00\x00\x02\x00\x00\x00\x00\x00\x00\x00\x02TestServer\0extrabytes";
@@ -219,18 +219,9 @@ mod tests {
 
     #[test]
     fn check_errors_if_read_error() {
-        fn e() -> io::Error {
-            io::Error::from_raw_os_error(22)
-        }
-        struct FailingRead {}
-        impl io::Read for FailingRead {
-            fn read(&mut self, _buf: &mut [u8]) -> io::Result<usize> {
-                Err(e())
-            }
-        }
-        let mut failing_read = io::BufReader::new(FailingRead {});
-        let res = Pdu::check(&mut failing_read).map_err(|e| e.to_string());
-        assert_eq!(res, Err(e().to_string()));
+        let mut failing_read = FailingRead::new_bufreader();
+        let res = Pdu::check(&mut failing_read).unwrap_err();
+        assert_eq!(res.to_string(), FailingRead::error_string());
     }
 
     #[test]

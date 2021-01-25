@@ -133,11 +133,19 @@ fn inv(message: String) -> io::Error {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::unittest_utils::FailingRead;
 
     #[test]
     fn read_integer1() {
         let mut bytes = io::BufReader::new(&[0x23][..]);
         assert_eq!(Integer1::read(&mut bytes).unwrap(), Integer1::new(0x23));
+    }
+
+    #[test]
+    fn read_error_integer1() {
+        let mut failing_read = FailingRead::new_bufreader();
+        let res = Integer1::read(&mut failing_read).unwrap_err();
+        assert_eq!(res.to_string(), FailingRead::error_string());
     }
 
     #[tokio::test]
