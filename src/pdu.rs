@@ -257,8 +257,20 @@ mod tests {
         );
     }
 
-    // TODO: variable-length c-octet strings that are longer than max length
-    // TODO: max length INCLUDES the NULL character
+    #[test]
+    fn parse_bind_transmitter_with_too_long_system_id() {
+        const PDU: &[u8; 0x29] =
+            b"\x00\x00\x00\x29\x00\x00\x00\x02\x00\x00\x00\x00\x01\x02\x03\x44ABDEFABCDEFABCDEFA\0\0\0\x34\x13\x50\0";
+
+        let mut cursor = Cursor::new(&PDU[..]);
+
+        let res = Pdu::parse(&mut cursor).unwrap_err();
+        assert_eq!(
+            res.to_string(),
+            "String value for system_id is too long.  Max length is 16, including final zero byte."
+        );
+    }
+
     // TODO: very long strings inside PDU with short length
     // TODO: long length, short pdu
     // TODO: long length, long pdu
