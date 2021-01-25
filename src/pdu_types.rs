@@ -94,14 +94,21 @@ impl COctetString {
         field_name: &str,
     ) -> io::Result<Self> {
         let mut buf = Vec::new();
-        bytes.take(max_len as u64).read_until(0x00, &mut buf)?;
+        let num = bytes.take(max_len as u64).read_until(0x00, &mut buf)?;
 
         if buf.last() != Some(&0x00) {
             // Failed to read a NULL terminator before we ran out of characters
-            return Err(inv(format!(
-                "String value for {} is too long.  Max length is {}.",
-                field_name, max_len
-            )));
+            if num == max_len {
+                return Err(inv(format!(
+                    "String value for {} is too long.  Max length is {}, including final zero byte.",
+                    field_name, max_len
+                )));
+            } else {
+                return Err(inv(format!(
+                    "String value for {} did not end with a zero byte.",
+                    field_name
+                )));
+            }
         }
 
         let buf = &buf[..(buf.len() - 1)]; // Remove trailing 0 byte
@@ -164,6 +171,13 @@ mod tests {
         );
     }
 
+    #[test]
+    fn read_error_integer4() {
+        let mut failing_read = FailingRead::new_bufreader();
+        let res = Integer4::read(&mut failing_read).unwrap_err();
+        assert_eq!(res.to_string(), FailingRead::error_string());
+    }
+
     #[tokio::test]
     async fn write_integer4() {
         let mut buf: Vec<u8> = Vec::new();
@@ -180,6 +194,52 @@ mod tests {
         );
     }
 
+    #[test]
+    fn read_coctetstring_max_length() {
+        let mut bytes = io::BufReader::new("thisislong\0".as_bytes());
+        assert_eq!(
+            COctetString::read(&mut bytes, 11, "test_field").unwrap(),
+            COctetString::new(AsciiStr::from_ascii("thisislong").unwrap(), 11)
+        );
+    }
+
+    #[test]
+    fn read_error_coctetstring() {
+        let mut failing_read = FailingRead::new_bufreader();
+        let res = COctetString::read(&mut failing_read, 20, "tst").unwrap_err();
+        assert_eq!(res.to_string(), FailingRead::error_string());
+    }
+
+    #[test]
+    fn read_coctetstring_missing_zero_byte() {
+        let mut bytes = io::BufReader::new("foobar".as_bytes());
+        let res = COctetString::read(&mut bytes, 20, "test_field").unwrap_err();
+        assert_eq!(
+            res.to_string(),
+            "String value for test_field did not end with a zero byte."
+        );
+    }
+
+    #[test]
+    fn read_coctetstring_too_long() {
+        let mut bytes = io::BufReader::new("foobar\0".as_bytes());
+        let res = COctetString::read(&mut bytes, 3, "test_field").unwrap_err();
+        assert_eq!(
+            res.to_string(),
+            "String value for test_field is too long.  Max length is 3, including final zero byte."
+        );
+    }
+
+    #[test]
+    fn read_coctetstring_zero_not_included_in_length() {
+        let mut bytes = io::BufReader::new("foobar\0".as_bytes());
+        let res = COctetString::read(&mut bytes, 6, "test_field").unwrap_err();
+        assert_eq!(
+            res.to_string(),
+            "String value for test_field is too long.  Max length is 6, including final zero byte."
+        );
+    }
+
     #[tokio::test]
     async fn write_coctetstring() {
         let mut buf: Vec<u8> = Vec::new();
@@ -187,10 +247,4 @@ mod tests {
         val.write(&mut buf).await.unwrap();
         assert_eq!(buf, vec!['a' as u8, 'b' as u8, 'c' as u8, 0x00]);
     }
-
-    // TODO: read error
-    // TODO: end of stream before end of string
-    // TODO: missing \0
-    // TODO: coctetstring too long
-    // TODO: coctetstring exactly right length
 }
