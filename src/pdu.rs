@@ -1,6 +1,6 @@
 use ascii::AsciiStr;
 use std::convert::TryFrom;
-use std::io::{Cursor, ErrorKind, Read};
+use std::io::{BufRead, ErrorKind, Read};
 
 use crate::pdu_types::{COctetString, Integer1, Integer4, WriteStream};
 use crate::result::Result;
@@ -31,14 +31,16 @@ pub enum CheckOutcome {
 }
 
 impl Pdu {
-    pub fn parse(bytes: &mut Cursor<&[u8]>) -> Result<Pdu> {
-        let _command_length = Integer4::read(bytes)?;
-        let command_id = Integer4::read(bytes)?;
+    pub fn parse(bytes: &mut dyn BufRead) -> Result<Pdu> {
+        let command_length = Integer4::read(bytes)?;
+        let mut bytes =
+            bytes.take(u64::try_from(command_length.value - 4).unwrap_or(0));
+        let command_id = Integer4::read(&mut bytes)?;
 
         match command_id.value {
-            0x00000002 => BindTransmitterPdu::parse(bytes)
+            0x00000002 => BindTransmitterPdu::parse(&mut bytes)
                 .map(|p| Pdu::BindTransmitter(p)),
-            0x80000002 => BindTransmitterRespPdu::parse(bytes)
+            0x80000002 => BindTransmitterRespPdu::parse(&mut bytes)
                 .map(|p| Pdu::BindTransmitterResp(p)),
             _ => {
                 Err(format!("Unknown command id: {}", command_id.value).into())
@@ -46,7 +48,7 @@ impl Pdu {
         }
     }
 
-    pub fn check(bytes: &mut dyn Read) -> Result<CheckOutcome> {
+    pub fn check(bytes: &mut dyn BufRead) -> Result<CheckOutcome> {
         check(bytes)
     }
 
@@ -58,7 +60,7 @@ impl Pdu {
     }
 }
 
-fn check(bytes: &mut dyn Read) -> Result<CheckOutcome> {
+fn check(bytes: &mut dyn BufRead) -> Result<CheckOutcome> {
     let command_length = Integer4::read(bytes);
     match command_length {
         Ok(command_length) => check_can_read(bytes, command_length.value),
@@ -70,7 +72,7 @@ fn check(bytes: &mut dyn Read) -> Result<CheckOutcome> {
 }
 
 fn check_can_read(
-    bytes: &mut dyn Read,
+    bytes: &mut dyn BufRead,
     command_length: u32,
 ) -> Result<CheckOutcome> {
     if (command_length as usize) > MAX_PDU_LENGTH {
@@ -117,7 +119,7 @@ impl BindTransmitterPdu {
         todo!()
     }
 
-    fn parse(bytes: &mut Cursor<&[u8]>) -> Result<BindTransmitterPdu> {
+    fn parse(bytes: &mut dyn BufRead) -> Result<BindTransmitterPdu> {
         let command_status = Integer4::read(bytes)?;
         let sequence_number = Integer4::read(bytes)?;
         let system_id =
@@ -178,7 +180,7 @@ impl BindTransmitterRespPdu {
         Ok(())
     }
 
-    fn parse(_bytes: &mut Cursor<&[u8]>) -> Result<BindTransmitterRespPdu> {
+    fn parse(_bytes: &mut dyn BufRead) -> Result<BindTransmitterRespPdu> {
         Ok(BindTransmitterRespPdu {
             sequence_number: Integer4::new(0x12),
             system_id: COctetString::new(
@@ -193,6 +195,7 @@ impl BindTransmitterRespPdu {
 mod tests {
     use super::*;
     use crate::unittest_utils::FailingRead;
+    use std::io::Cursor;
 
     const BIND_TRANSMITTER_RESP_PDU_PLUS_EXTRA: &[u8; 0x1b + 0xa] =
         b"\x00\x00\x00\x1b\x80\x00\x00\x02\x00\x00\x00\x00\x00\x00\x00\x02TestServer\0extrabytes";
@@ -271,7 +274,21 @@ mod tests {
         );
     }
 
-    // TODO: very long strings inside PDU with short length
+    #[test]
+    fn parse_bind_transmitter_with_length_ending_within_string() {
+        const PDU: &[u8; 0x29] =
+            b"\x00\x00\x00\x12\x00\x00\x00\x02\x00\x00\x00\x00\x01\x02\x03\x44ABDEFABCDEFABCDEFA\0\0\0\x34\x13\x50\0";
+
+        let mut cursor = Cursor::new(&PDU[..]);
+
+        let res = Pdu::parse(&mut cursor).unwrap_err();
+        assert_eq!(
+            res.to_string(),
+            "String value for system_id did not end with a zero byte."
+        );
+    }
+
+    // TODO: Bytes end before all fields are done
     // TODO: long length, short pdu
     // TODO: long length, long pdu
     // TODO: non-ascii characters in c-octet string

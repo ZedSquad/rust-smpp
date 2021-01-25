@@ -25,7 +25,7 @@ impl Integer1 {
         Self { value }
     }
 
-    pub fn read(bytes: &mut dyn Read) -> io::Result<Self> {
+    pub fn read(bytes: &mut dyn BufRead) -> io::Result<Self> {
         // Is allocating this buffer the right way?
         let mut ret: [u8; 1] = [0; 1];
         bytes.read_exact(&mut ret)?;
@@ -52,7 +52,7 @@ impl Integer4 {
         Self { value }
     }
 
-    pub fn read(bytes: &mut dyn Read) -> io::Result<Self> {
+    pub fn read(bytes: &mut dyn BufRead) -> io::Result<Self> {
         let mut ret: [u8; 4] = [0; 4];
         bytes.read_exact(&mut ret)?;
         Ok(Self {
@@ -71,7 +71,7 @@ impl Integer4 {
 /// A series of ASCII characters terminated with the NULL character.
 #[derive(Debug, PartialEq)]
 pub struct COctetString {
-    value: AsciiString,
+    pub value: AsciiString,
 }
 
 // To consider in future: types for e.g. system_id that are a COctetString
