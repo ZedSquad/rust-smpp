@@ -1,5 +1,6 @@
 use ascii::AsciiStr;
 use std::convert::TryFrom;
+use std::io;
 use std::io::{BufRead, ErrorKind, Read};
 
 use crate::pdu_types::{COctetString, Integer1, Integer4, WriteStream};
@@ -31,7 +32,7 @@ pub enum CheckOutcome {
 }
 
 impl Pdu {
-    pub fn parse(bytes: &mut dyn BufRead) -> Result<Pdu> {
+    pub fn parse(bytes: &mut dyn BufRead) -> io::Result<Pdu> {
         let command_length = Integer4::read(bytes)?;
         let mut bytes =
             bytes.take(u64::try_from(command_length.value - 4).unwrap_or(0));
@@ -42,10 +43,18 @@ impl Pdu {
                 .map(|p| Pdu::BindTransmitter(p)),
             0x80000002 => BindTransmitterRespPdu::parse(&mut bytes)
                 .map(|p| Pdu::BindTransmitterResp(p)),
-            _ => {
-                Err(format!("Unknown command id: {}", command_id.value).into())
-            }
-        }
+            _ => Err(io::Error::new(
+                io::ErrorKind::Other,
+                format!("Unknown command id: {}", command_id.value),
+            )),
+        }.map_err(|e| match e.kind() {
+            io::ErrorKind::UnexpectedEof =>
+                io::Error::new(
+                    io::ErrorKind::Other,
+                    "Reached end of PDU length (or end of input) before finding all fields of the PDU."
+                ),
+            _ => e
+        })
     }
 
     pub fn check(bytes: &mut dyn BufRead) -> Result<CheckOutcome> {
@@ -119,7 +128,7 @@ impl BindTransmitterPdu {
         todo!()
     }
 
-    fn parse(bytes: &mut dyn BufRead) -> Result<BindTransmitterPdu> {
+    fn parse(bytes: &mut dyn BufRead) -> io::Result<BindTransmitterPdu> {
         let command_status = Integer4::read(bytes)?;
         let sequence_number = Integer4::read(bytes)?;
         let system_id =
@@ -138,11 +147,13 @@ impl BindTransmitterPdu {
         )?;
 
         if command_status.value != 0x00 {
-            return Err(format!(
-                "command_status must be 0, but was {}",
-                command_status.value
-            )
-            .into());
+            return Err(io::Error::new(
+                io::ErrorKind::Other,
+                format!(
+                    "command_status must be 0, but was {}",
+                    command_status.value
+                ),
+            ));
         }
 
         Ok(BindTransmitterPdu {
@@ -180,7 +191,7 @@ impl BindTransmitterRespPdu {
         Ok(())
     }
 
-    fn parse(_bytes: &mut dyn BufRead) -> Result<BindTransmitterRespPdu> {
+    fn parse(_bytes: &mut dyn BufRead) -> io::Result<BindTransmitterRespPdu> {
         Ok(BindTransmitterRespPdu {
             sequence_number: Integer4::new(0x12),
             system_id: COctetString::new(
@@ -264,7 +275,6 @@ mod tests {
     fn parse_bind_transmitter_with_too_long_system_id() {
         const PDU: &[u8; 0x29] =
             b"\x00\x00\x00\x29\x00\x00\x00\x02\x00\x00\x00\x00\x01\x02\x03\x44ABDEFABCDEFABCDEFA\0\0\0\x34\x13\x50\0";
-
         let mut cursor = Cursor::new(&PDU[..]);
 
         let res = Pdu::parse(&mut cursor).unwrap_err();
@@ -278,7 +288,6 @@ mod tests {
     fn parse_bind_transmitter_with_length_ending_within_string() {
         const PDU: &[u8; 0x29] =
             b"\x00\x00\x00\x12\x00\x00\x00\x02\x00\x00\x00\x00\x01\x02\x03\x44ABDEFABCDEFABCDEFA\0\0\0\x34\x13\x50\0";
-
         let mut cursor = Cursor::new(&PDU[..]);
 
         let res = Pdu::parse(&mut cursor).unwrap_err();
@@ -288,7 +297,19 @@ mod tests {
         );
     }
 
-    // TODO: Bytes end before all fields are done
+    #[test]
+    fn parse_bind_transmitter_ending_before_all_fields() {
+        const PDU: &[u8; 0x13] =
+            b"\x00\x00\x00\x13\x00\x00\x00\x02\x00\x00\x00\x00\x01\x02\x03\x44\0\0\0";
+        let mut cursor = Cursor::new(&PDU[..]);
+
+        let res = Pdu::parse(&mut cursor).unwrap_err();
+        assert_eq!(
+            res.to_string(),
+            "Reached end of PDU length (or end of input) before finding all fields of the PDU."
+        );
+    }
+
     // TODO: long length, short pdu
     // TODO: long length, long pdu
     // TODO: non-ascii characters in c-octet string
