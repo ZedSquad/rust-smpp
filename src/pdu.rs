@@ -90,7 +90,7 @@ fn validate_command_length(command_length: &Integer4) -> io::Result<()> {
         Err(io::Error::new(
             io::ErrorKind::Other,
             format!(
-                "PDU too long!  Length: {}, max allowed: {}",
+                "PDU too long!  Length: {}, max allowed: {}.",
                 len, MAX_PDU_LENGTH
             ),
         ))
@@ -98,7 +98,7 @@ fn validate_command_length(command_length: &Integer4) -> io::Result<()> {
         Err(io::Error::new(
             io::ErrorKind::Other,
             format!(
-                "PDU too short!  Length: {}, min allowed: {}",
+                "PDU too short!  Length: {}, min allowed: {}.",
                 len, MIN_PDU_LENGTH
             ),
         ))
@@ -252,6 +252,18 @@ mod tests {
     }
 
     #[test]
+    fn check_errors_if_short_length() {
+        const PDU: &[u8; 4] = b"\x00\x00\x00\x04";
+        let mut cursor = Cursor::new(&PDU);
+
+        let res = Pdu::check(&mut cursor).unwrap_err();
+        assert_eq!(
+            res.to_string(),
+            "PDU too short!  Length: 4, min allowed: 8."
+        );
+    }
+
+    #[test]
     fn check_errors_without_reading_all_if_long_length() {
         const PDU: &[u8; 16] =
             b"\xff\xff\xff\xff\x00\x00\x00\x02\x00\x00\x00\x00\x00\x00\x00\x00";
@@ -260,7 +272,7 @@ mod tests {
         let res = Pdu::check(&mut cursor).unwrap_err();
         assert_eq!(
             res.to_string(),
-            "PDU too long!  Length: 4294967295, max allowed: 70000"
+            "PDU too long!  Length: 4294967295, max allowed: 70000."
         );
     }
 
@@ -350,6 +362,18 @@ mod tests {
     }
 
     #[test]
+    fn parse_bind_transmitter_with_short_length() {
+        const PDU: &[u8; 4] = b"\x00\x00\x00\x04";
+        let mut cursor = Cursor::new(&PDU);
+
+        let res = Pdu::parse(&mut cursor).unwrap_err();
+        assert_eq!(
+            res.to_string(),
+            "PDU too short!  Length: 4, min allowed: 8."
+        );
+    }
+
+    #[test]
     fn parse_bind_transmitter_with_massive_length() {
         const PDU: &[u8; 16] =
             b"\xff\xff\xff\xff\x00\x00\x00\x02\x00\x00\x00\x00\x00\x00\x00\x00";
@@ -358,9 +382,20 @@ mod tests {
         let res = Pdu::parse(&mut cursor).unwrap_err();
         assert_eq!(
             res.to_string(),
-            "PDU too long!  Length: 4294967295, max allowed: 70000"
+            "PDU too long!  Length: 4294967295, max allowed: 70000."
         );
     }
 
-    // TODO: non-ascii characters in c-octet string
+    #[test]
+    fn parse_bind_transmitter_containing_nonascii_characters() {
+        const PDU: &[u8; 0x2e + 0x6] =
+            b"\x00\x00\x00\x2e\x00\x00\x00\x02\x00\x00\x00\x00\x01\x02\x03\x44mys\xf0\x9f\x92\xa9m_ID\0pw$xx\0t_p_\0\x34\x13\x50rng\0foobar";
+        let mut cursor = Cursor::new(&PDU);
+
+        let res = Pdu::parse(&mut cursor).unwrap_err();
+        assert_eq!(
+            res.to_string(),
+            "String value of system_id is not ASCII (valid up to byte 3)."
+        );
+    }
 }
