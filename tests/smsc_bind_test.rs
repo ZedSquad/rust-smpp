@@ -28,6 +28,31 @@ fn responds_to_bind_transmitter() {
     })
 }
 
+/* Guiding test, fails for now
+#[test]
+fn responds_failure_to_bad_pdu() {
+    pub const PDU: &[u8; 0x29] =
+        b"\x00\x00\x00\x29\x00\x00\x00\x02\x00\x00\x00\x00\x00\x00\x00\x14e\xf0\x9f\x92\xa9d\0password\0type\0\x34\x00\x00\0";
+
+    pub const RESP: &[u8; 0x10] =
+        b"\x00\x00\x00\x10\x80\x00\x00\x02\x00\x00\x00\x01\x00\x00\x00\x14";
+    //                                          error ^^^^        seq ^^^^
+    // Note: no body part because this is an error response
+
+    // Given an SMSC
+    let server = TestServer::start().unwrap();
+    server.runtime.block_on(async {
+        // When ESME tries to bind with an invalid PDU
+        let mut client = TestClient::connect_to(&server).await.unwrap();
+        client.stream.write(PDU).await.unwrap();
+
+        // Then SMSC responds with an error response
+        let resp = client.read_n(RESP.len()).await;
+        assert_eq!(s(&resp), s(RESP));
+    })
+}
+*/
+
 // TODO: change sequence number and pass without modifying hard-coded value
 // TODO: partial PDU provided (with length implying longer)
 // TODO: too-short length
