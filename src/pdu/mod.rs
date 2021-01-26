@@ -1,9 +1,16 @@
+mod pdu_parse_error;
+mod pdu_parse_error_kind;
+pub mod pdu_types;
+
+use pdu_parse_error::PduParseError;
+use pdu_parse_error_kind::PduParseErrorKind;
+use pdu_types::{COctetString, Integer1, Integer4, WriteStream};
+
 use ascii::AsciiStr;
 use std::convert::TryFrom;
 use std::io;
 use std::io::{BufRead, ErrorKind, Read};
 
-use crate::pdu_types::{COctetString, Integer1, Integer4, WriteStream};
 use crate::result::Result;
 
 // https://smpp.org/smppv34_gsmumts_ig_v10.pdf p11 states:

@@ -7,10 +7,10 @@ use tokio::io::AsyncReadExt;
 use tokio::net::{TcpListener, TcpStream};
 use tokio::sync::{Semaphore, TryAcquireError};
 
+use crate::pdu::pdu_types::{COctetString, Integer4};
 use crate::pdu::{
     BindTransmitterRespPdu, CheckOutcome, Pdu, MAX_LENGTH_SYSTEM_ID,
 };
-use crate::pdu_types::{COctetString, Integer4};
 use crate::result::Result;
 use crate::smsc_config::SmscConfig;
 
