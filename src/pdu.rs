@@ -34,6 +34,7 @@ pub enum CheckOutcome {
 impl Pdu {
     pub fn parse(bytes: &mut dyn BufRead) -> io::Result<Pdu> {
         let command_length = Integer4::read(bytes)?;
+        validate_command_length(&command_length)?;
         let mut bytes =
             bytes.take(u64::try_from(command_length.value - 4).unwrap_or(0));
         let command_id = Integer4::read(&mut bytes)?;
@@ -72,7 +73,10 @@ impl Pdu {
 fn check(bytes: &mut dyn BufRead) -> Result<CheckOutcome> {
     let command_length = Integer4::read(bytes);
     match command_length {
-        Ok(command_length) => check_can_read(bytes, command_length.value),
+        Ok(command_length) => {
+            validate_command_length(&command_length)?;
+            check_can_read(bytes, command_length.value)
+        }
         Err(e) => match e.kind() {
             ErrorKind::UnexpectedEof => Ok(CheckOutcome::Incomplete),
             _ => Err(e.into()),
@@ -80,24 +84,33 @@ fn check(bytes: &mut dyn BufRead) -> Result<CheckOutcome> {
     }
 }
 
+fn validate_command_length(command_length: &Integer4) -> io::Result<()> {
+    let len = command_length.value as usize;
+    if len > MAX_PDU_LENGTH {
+        Err(io::Error::new(
+            io::ErrorKind::Other,
+            format!(
+                "PDU too long!  Length: {}, max allowed: {}",
+                len, MAX_PDU_LENGTH
+            ),
+        ))
+    } else if len < MIN_PDU_LENGTH {
+        Err(io::Error::new(
+            io::ErrorKind::Other,
+            format!(
+                "PDU too short!  Length: {}, min allowed: {}",
+                len, MIN_PDU_LENGTH
+            ),
+        ))
+    } else {
+        Ok(())
+    }
+}
+
 fn check_can_read(
     bytes: &mut dyn BufRead,
     command_length: u32,
 ) -> Result<CheckOutcome> {
-    if (command_length as usize) > MAX_PDU_LENGTH {
-        return Err(format!(
-            "PDU too long!  Length: {}, max allowed: {}",
-            command_length, MAX_PDU_LENGTH
-        )
-        .into());
-    } else if (command_length as usize) < MIN_PDU_LENGTH {
-        return Err(format!(
-            "PDU too short!  Length: {}, min allowed: {}",
-            command_length, MIN_PDU_LENGTH
-        )
-        .into());
-    }
-
     let len = usize::try_from(command_length - 4)?;
     // Is there a better way than allocating this vector?
     let mut buf = Vec::with_capacity(len);
@@ -239,6 +252,19 @@ mod tests {
     }
 
     #[test]
+    fn check_errors_without_reading_all_if_long_length() {
+        const PDU: &[u8; 16] =
+            b"\xff\xff\xff\xff\x00\x00\x00\x02\x00\x00\x00\x00\x00\x00\x00\x00";
+        let mut cursor = Cursor::new(&PDU);
+
+        let res = Pdu::check(&mut cursor).unwrap_err();
+        assert_eq!(
+            res.to_string(),
+            "PDU too long!  Length: 4294967295, max allowed: 70000"
+        );
+    }
+
+    #[test]
     fn parse_valid_bind_transmitter() {
         const BIND_TRANSMITTER_PDU_PLUS_EXTRA: &[u8; 0x2e + 0x6] =
             b"\x00\x00\x00\x2e\x00\x00\x00\x02\x00\x00\x00\x00\x01\x02\x03\x44mysystem_ID\0pw$xx\0t_p_\0\x34\x13\x50rng\0foobar";
@@ -310,7 +336,31 @@ mod tests {
         );
     }
 
-    // TODO: long length, short pdu
-    // TODO: long length, long pdu
+    #[test]
+    fn parse_bind_transmitter_hitting_eof_before_end_of_length() {
+        const PDU: &[u8; 0x0b] =
+            b"\x00\x00\x00\x2e\x00\x00\x00\x02\x00\x00\x00";
+        let mut cursor = Cursor::new(&PDU[..]);
+
+        let res = Pdu::parse(&mut cursor).unwrap_err();
+        assert_eq!(
+            res.to_string(),
+            "Reached end of PDU length (or end of input) before finding all fields of the PDU."
+        );
+    }
+
+    #[test]
+    fn parse_bind_transmitter_with_massive_length() {
+        const PDU: &[u8; 16] =
+            b"\xff\xff\xff\xff\x00\x00\x00\x02\x00\x00\x00\x00\x00\x00\x00\x00";
+        let mut cursor = Cursor::new(&PDU);
+
+        let res = Pdu::parse(&mut cursor).unwrap_err();
+        assert_eq!(
+            res.to_string(),
+            "PDU too long!  Length: 4294967295, max allowed: 70000"
+        );
+    }
+
     // TODO: non-ascii characters in c-octet string
 }
