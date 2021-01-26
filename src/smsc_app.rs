@@ -113,7 +113,7 @@ impl SmppConnection {
     fn parse_pdu(&mut self) -> Result<Option<Pdu>> {
         let mut buf = Cursor::new(&self.buffer[..]);
         match Pdu::check(&mut buf) {
-            Ok(CheckOutcome::Ok) => {
+            Ok(CheckOutcome::Ready) => {
                 // Pdu::check moved us to the end, so position is length
                 let len = buf.position() as usize;
 
@@ -126,7 +126,7 @@ impl SmppConnection {
                 Ok(Some(pdu))
             }
             Ok(CheckOutcome::Incomplete) => Ok(None), // Try again when we have more
-            Err(e) => Err(e),                         // Failed (e.g. too long)
+            Err(e) => Err(Box::new(e)),               // Failed (e.g. too long)
         }
     }
 

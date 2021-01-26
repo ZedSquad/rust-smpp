@@ -4,11 +4,11 @@ use std::io::Read;
 
 //use crate::pdu::PduParseError;
 //use crate::pdu::PduParseErrorKind;
-use crate::pdu::check_outcome::CheckOutcome;
 use crate::pdu::formats::{Integer4, WriteStream};
 use crate::pdu::validate_command_length::validate_command_length;
 use crate::pdu::{check, BindTransmitterPdu, BindTransmitterRespPdu};
-use crate::result::Result;
+use crate::pdu::{CheckError, CheckOutcome};
+use crate::result;
 
 #[derive(Debug, PartialEq)]
 pub enum Pdu {
@@ -19,7 +19,8 @@ pub enum Pdu {
 impl Pdu {
     pub fn parse(bytes: &mut dyn io::BufRead) -> io::Result<Pdu> {
         let command_length = Integer4::read(bytes)?;
-        validate_command_length(&command_length)?;
+        validate_command_length(&command_length)
+            .map_err(|e| io::Error::new(io::ErrorKind::Other, e))?;
         let mut bytes =
             bytes.take(u64::try_from(command_length.value - 4).unwrap_or(0));
         let command_id = Integer4::read(&mut bytes)?;
@@ -58,11 +59,16 @@ impl Pdu {
         //})
     }
 
-    pub fn check(bytes: &mut dyn io::BufRead) -> Result<CheckOutcome> {
+    pub fn check(
+        bytes: &mut dyn io::BufRead,
+    ) -> Result<CheckOutcome, CheckError> {
         check::check(bytes)
     }
 
-    pub async fn write(&self, tcp_stream: &mut WriteStream) -> Result<()> {
+    pub async fn write(
+        &self,
+        tcp_stream: &mut WriteStream,
+    ) -> result::Result<()> {
         match self {
             Pdu::BindTransmitter(pdu) => pdu.write(tcp_stream).await,
             Pdu::BindTransmitterResp(pdu) => pdu.write(tcp_stream).await,
@@ -87,7 +93,7 @@ mod tests {
         // Most tests for check are in the check module.  Here we do enough
         // to confirm that we are calling through it that from Pdu::check.
         let mut cursor = Cursor::new(&BIND_TRANSMITTER_RESP_PDU_PLUS_EXTRA[..]);
-        assert_eq!(Pdu::check(&mut cursor).unwrap(), CheckOutcome::Ok);
+        assert_eq!(Pdu::check(&mut cursor).unwrap(), CheckOutcome::Ready);
     }
 
     #[test]

@@ -1,5 +1,4 @@
 mod check;
-mod check_outcome;
 pub mod formats;
 mod operations;
 mod pdu_enum;
@@ -7,7 +6,7 @@ mod pdu_parse_error;
 mod pdu_parse_error_kind;
 mod validate_command_length;
 
-pub use check_outcome::CheckOutcome;
+pub use check::{CheckError, CheckOutcome};
 pub use operations::bind_transmitter::BindTransmitterPdu;
 pub use operations::bind_transmitter_resp::BindTransmitterRespPdu;
 pub use pdu_enum::Pdu;
