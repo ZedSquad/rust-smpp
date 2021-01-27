@@ -44,7 +44,7 @@ pub fn check(bytes: &mut dyn io::BufRead) -> Result<CheckOutcome, CheckError> {
                 Ok(()) => (),
                 Err(e) => {
                     return Err(CheckError {
-                        message: e,
+                        message: e.message,
                         io_errorkind: None,
                     })
                 }
