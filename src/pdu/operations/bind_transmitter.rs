@@ -21,7 +21,7 @@ pub struct BindTransmitterPdu {
 }
 
 impl BindTransmitterPdu {
-    pub async fn write(&self, _tcp_stream: &mut WriteStream) -> io::Result<()> {
+    pub async fn write(&self, _stream: &mut WriteStream) -> io::Result<()> {
         todo!()
     }
 

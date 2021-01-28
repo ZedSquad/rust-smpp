@@ -13,17 +13,17 @@ pub struct BindTransmitterRespPdu {
 }
 
 impl BindTransmitterRespPdu {
-    pub async fn write(&self, tcp_stream: &mut WriteStream) -> io::Result<()> {
+    pub async fn write(&self, stream: &mut WriteStream) -> io::Result<()> {
         let command_length =
             Integer4::new((16 + self.system_id.len() + 1) as u32);
         let command_id = Integer4::new(0x80000002); // bind_transmitter_resp
         let command_status = Integer4::new(0);
 
-        command_length.write(tcp_stream).await?;
-        command_id.write(tcp_stream).await?;
-        command_status.write(tcp_stream).await?;
-        self.sequence_number.write(tcp_stream).await?;
-        self.system_id.write(tcp_stream).await?;
+        command_length.write(stream).await?;
+        command_id.write(stream).await?;
+        command_status.write(stream).await?;
+        self.sequence_number.write(stream).await?;
+        self.system_id.write(stream).await?;
 
         Ok(())
     }

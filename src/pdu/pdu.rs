@@ -48,10 +48,10 @@ impl Pdu {
         check::check(bytes)
     }
 
-    pub async fn write(&self, tcp_stream: &mut WriteStream) -> io::Result<()> {
+    pub async fn write(&self, stream: &mut WriteStream) -> io::Result<()> {
         match self {
-            Pdu::BindTransmitter(pdu) => pdu.write(tcp_stream).await,
-            Pdu::BindTransmitterResp(pdu) => pdu.write(tcp_stream).await,
+            Pdu::BindTransmitter(pdu) => pdu.write(stream).await,
+            Pdu::BindTransmitterResp(pdu) => pdu.write(stream).await,
         }
     }
 }
