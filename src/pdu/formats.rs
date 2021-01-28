@@ -17,7 +17,7 @@ pub type WriteStream = dyn AsyncWrite + Send + Unpin;
 /// Integer: (1 byte)
 /// An unsigned value with the defined number of octets.
 /// The octets will always be transmitted MSB first (Big Endian).
-#[derive(Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct Integer1 {
     pub value: u8,
 }
@@ -44,7 +44,7 @@ impl Integer1 {
 /// Integer: (4 bytes)
 /// An unsigned value with the defined number of octets.
 /// The octets will always be transmitted MSB first (Big Endian).
-#[derive(Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct Integer4 {
     pub value: u32,
 }
@@ -71,7 +71,7 @@ impl Integer4 {
 ///
 /// C-Octet String:
 /// A series of ASCII characters terminated with the NULL character.
-#[derive(Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct COctetString {
     pub value: AsciiString,
 }

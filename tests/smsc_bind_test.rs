@@ -53,7 +53,6 @@ fn responds_failure_to_bad_pdu() {
 }
 */
 
-// TODO: change sequence number and pass without modifying hard-coded value
 // TODO: partial PDU provided (with length implying longer)
 // TODO: too-short length
 // TODO: too-long length

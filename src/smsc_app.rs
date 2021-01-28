@@ -8,7 +8,7 @@ use tokio::net::{TcpListener, TcpStream};
 use tokio::sync::{Semaphore, TryAcquireError};
 
 use crate::async_result::AsyncResult;
-use crate::pdu::formats::{COctetString, Integer4};
+use crate::pdu::formats::COctetString;
 use crate::pdu::{BindTransmitterRespPdu, CheckOutcome, Pdu};
 use crate::smsc_config::SmscConfig;
 
@@ -72,15 +72,28 @@ async fn process(
     loop {
         let pdu = connection.read_pdu().await?;
         if let Some(pdu) = pdu {
-            info!("<= {:?}", pdu);
-            let response = Pdu::BindTransmitterResp(BindTransmitterRespPdu {
-                sequence_number: Integer4::new(0x01),
-                system_id: COctetString::new(&config.system_id, 16),
-            });
-            connection.write_pdu(&response).await?;
+            let response = handle_pdu(pdu, config).await;
+            match response {
+                Ok(response) => connection.write_pdu(&response).await?,
+                Err(e) => todo!("Handle failure to deal with PDU"),
+            }
         } else {
+            // Client closed the connection
             return Ok(false);
         }
+    }
+}
+
+async fn handle_pdu(pdu: Pdu, config: &SmscConfig) -> Result<Pdu, String> {
+    info!("<= {:?}", pdu);
+    match pdu {
+        Pdu::BindTransmitter(pdu) => {
+            Ok(Pdu::BindTransmitterResp(BindTransmitterRespPdu {
+                sequence_number: pdu.sequence_number.clone(),
+                system_id: COctetString::new(&config.system_id, 16),
+            }))
+        }
+        _ => Err(String::from("Don't know what to do with this PDU type")),
     }
 }
 
