@@ -2,7 +2,7 @@ use ascii::AsciiStr;
 use std::io;
 
 use crate::pdu::formats::{COctetString, Integer4, WriteStream};
-use crate::result::Result;
+use crate::pdu::PduParseError;
 
 const MAX_LENGTH_SYSTEM_ID: usize = 16;
 
@@ -13,7 +13,7 @@ pub struct BindTransmitterRespPdu {
 }
 
 impl BindTransmitterRespPdu {
-    pub async fn write(&self, tcp_stream: &mut WriteStream) -> Result<()> {
+    pub async fn write(&self, tcp_stream: &mut WriteStream) -> io::Result<()> {
         let command_length =
             Integer4::new((16 + self.system_id.len() + 1) as u32);
         let command_id = Integer4::new(0x80000002); // bind_transmitter_resp
@@ -30,7 +30,7 @@ impl BindTransmitterRespPdu {
 
     pub fn parse(
         _bytes: &mut dyn io::BufRead,
-    ) -> io::Result<BindTransmitterRespPdu> {
+    ) -> Result<BindTransmitterRespPdu, PduParseError> {
         Ok(BindTransmitterRespPdu {
             sequence_number: Integer4::new(0x12),
             system_id: COctetString::new(

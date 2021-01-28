@@ -131,6 +131,6 @@ impl SmppConnection {
     }
 
     async fn write_pdu(&mut self, pdu: &Pdu) -> Result<()> {
-        pdu.write(&mut self.tcp_stream).await
+        pdu.write(&mut self.tcp_stream).await.map_err(|e| e.into())
     }
 }

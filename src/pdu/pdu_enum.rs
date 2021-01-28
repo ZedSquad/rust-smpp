@@ -8,15 +8,18 @@ use crate::pdu::formats::{Integer4, WriteStream};
 use crate::pdu::validate_command_length::validate_command_length;
 use crate::pdu::{check, BindTransmitterPdu, BindTransmitterRespPdu};
 use crate::pdu::{CheckError, CheckOutcome};
-use crate::result;
 
 #[derive(Debug, PartialEq)]
 pub enum PduParseErrorKind {
     LengthTooLong,
     LengthTooShort,
-    NonasciiCOctetString,
+    COctetStringDoesNotEndWithZeroByte,
+    COctetStringIsNotAscii,
+    COctetStringTooLong,
     NotEnoughBytes,
     OtherIoError,
+    StatusIsNotZero,
+    UnknownCommandId,
 }
 
 #[derive(Debug, PartialEq)]
@@ -41,11 +44,10 @@ impl PduParseError {
             io_errorkind,
         }
     }
+}
 
-    fn from_io_error_with_command_id(
-        e: io::Error,
-        command_id: Option<u32>,
-    ) -> Self {
+impl From<io::Error> for PduParseError {
+    fn from(e: io::Error) -> Self {
         let (kind, message) = match e.kind() {
             io::ErrorKind::UnexpectedEof => (
                 PduParseErrorKind::NotEnoughBytes,
@@ -59,15 +61,9 @@ impl PduParseError {
         Self {
             kind,
             message,
-            command_id,
+            command_id: None,
             io_errorkind: Some(e.kind()),
         }
-    }
-}
-
-impl From<io::Error> for PduParseError {
-    fn from(e: io::Error) -> Self {
-        Self::from_io_error_with_command_id(e, None)
     }
 }
 
@@ -102,12 +98,6 @@ pub enum Pdu {
     BindTransmitterResp(BindTransmitterRespPdu),
 }
 
-fn pe(command_id: u32) -> Box<dyn FnOnce(io::Error) -> PduParseError> {
-    Box::new(move |e| {
-        PduParseError::from_io_error_with_command_id(e, Some(command_id))
-    })
-}
-
 impl Pdu {
     pub fn parse(bytes: &mut dyn io::BufRead) -> Result<Pdu, PduParseError> {
         let command_length = Integer4::read(bytes)?;
@@ -122,12 +112,17 @@ impl Pdu {
                 .map(|p| Pdu::BindTransmitter(p)),
             0x80000002 => BindTransmitterRespPdu::parse(&mut bytes)
                 .map(|p| Pdu::BindTransmitterResp(p)),
-            _ => Err(io::Error::new(
-                io::ErrorKind::Other,
-                format!("Unknown command id: {}", command_id.value),
-            )),
+            _ => Err(PduParseError {
+                kind: PduParseErrorKind::UnknownCommandId,
+                message: format!("Unknown command id: {}", command_id.value),
+                command_id: Some(command_id.value),
+                io_errorkind: None,
+            }),
         }
-        .map_err(pe(command_id.value))
+        .map_err(|mut e| {
+            e.command_id = Some(command_id.value);
+            e
+        })
     }
 
     pub fn check(
@@ -136,11 +131,7 @@ impl Pdu {
         check::check(bytes)
     }
 
-    // TODO: return io::Result from write()?
-    pub async fn write(
-        &self,
-        tcp_stream: &mut WriteStream,
-    ) -> result::Result<()> {
+    pub async fn write(&self, tcp_stream: &mut WriteStream) -> io::Result<()> {
         match self {
             Pdu::BindTransmitter(pdu) => pdu.write(tcp_stream).await,
             Pdu::BindTransmitterResp(pdu) => pdu.write(tcp_stream).await,
@@ -216,8 +207,13 @@ mod tests {
 
         let res = Pdu::parse(&mut cursor).unwrap_err();
         assert_eq!(
-            res.to_string(),
-            "String value for system_id is too long.  Max length is 16, including final zero byte."
+            res,
+            PduParseError::new(
+                PduParseErrorKind::COctetStringTooLong,
+                "String value for system_id is too long.  Max length is 16, including final zero byte.",
+                Some(0x00000002),
+                None,
+            )
         );
     }
 
@@ -229,8 +225,13 @@ mod tests {
 
         let res = Pdu::parse(&mut cursor).unwrap_err();
         assert_eq!(
-            res.to_string(),
-            "String value for system_id did not end with a zero byte."
+            res,
+            PduParseError::new(
+                PduParseErrorKind::COctetStringDoesNotEndWithZeroByte,
+                "String value for system_id did not end with a zero byte.",
+                Some(0x00000002),
+                None,
+            )
         );
     }
 
@@ -242,8 +243,13 @@ mod tests {
 
         let res = Pdu::parse(&mut cursor).unwrap_err();
         assert_eq!(
-            res.to_string(),
-            "Reached end of PDU length (or end of input) before finding all fields of the PDU."
+            res,
+            PduParseError::new(
+                PduParseErrorKind::NotEnoughBytes,
+                "Reached end of PDU length (or end of input) before finding all fields of the PDU.",
+                Some(0x00000002),
+                Some(io::ErrorKind::UnexpectedEof)
+            )
         );
     }
 
@@ -255,8 +261,13 @@ mod tests {
 
         let res = Pdu::parse(&mut cursor).unwrap_err();
         assert_eq!(
-            res.to_string(),
-            "Reached end of PDU length (or end of input) before finding all fields of the PDU."
+            res,
+            PduParseError::new(
+                PduParseErrorKind::NotEnoughBytes,
+                "Reached end of PDU length (or end of input) before finding all fields of the PDU.",
+                Some(0x00000002),
+                Some(io::ErrorKind::UnexpectedEof)
+            )
         );
     }
 
@@ -267,8 +278,13 @@ mod tests {
 
         let res = Pdu::parse(&mut cursor).unwrap_err();
         assert_eq!(
-            res.to_string(),
-            "PDU too short!  Length: 4, min allowed: 8."
+            res,
+            PduParseError::new(
+                PduParseErrorKind::LengthTooShort,
+                "PDU too short!  Length: 4, min allowed: 8.",
+                None,
+                None
+            )
         );
     }
 
@@ -280,12 +296,17 @@ mod tests {
 
         let res = Pdu::parse(&mut cursor).unwrap_err();
         assert_eq!(
-            res.to_string(),
-            "PDU too long!  Length: 4294967295, max allowed: 70000."
+            res,
+            PduParseError::new(
+                PduParseErrorKind::LengthTooLong,
+                "PDU too long!  Length: 4294967295, max allowed: 70000.",
+                None,
+                None
+            )
         );
     }
 
-    /*#[test]
+    #[test]
     fn parse_bind_transmitter_containing_nonascii_characters() {
         const PDU: &[u8; 0x2e + 0x6] =
             b"\x00\x00\x00\x2e\x00\x00\x00\x02\x00\x00\x00\x00\x01\x02\x03\x44mys\xf0\x9f\x92\xa9m_ID\0pw$xx\0t_p_\0\x34\x13\x50rng\0foobar";
@@ -295,11 +316,29 @@ mod tests {
         assert_eq!(
             res,
             PduParseError::new(
-                PduParseErrorKind::NonasciiCOctetString,
+                PduParseErrorKind::COctetStringIsNotAscii,
                 "String value of system_id is not ASCII (valid up to byte 3).",
                 Some(0x00000002),
                 None,
             )
         );
-    }*/
+    }
+
+    #[test]
+    fn parse_bind_transmitter_with_nonzero_status() {
+        const PDU: &[u8; 0x2e + 0x6] =
+            b"\x00\x00\x00\x2e\x00\x00\x00\x02\x00\x00\x00\x77\x01\x02\x03\x44mysystem_ID\0pw$xx\0t_p_\0\x34\x13\x50rng\0foobar";
+        let mut cursor = Cursor::new(&PDU);
+
+        let res = Pdu::parse(&mut cursor).unwrap_err();
+        assert_eq!(
+            res,
+            PduParseError::new(
+                PduParseErrorKind::StatusIsNotZero,
+                "command_status must be 0, but was 119",
+                Some(0x00000002),
+                None,
+            )
+        );
+    }
 }

@@ -3,6 +3,8 @@ use std::io;
 use std::io::{BufRead, Read};
 use tokio::io::{AsyncWrite, AsyncWriteExt};
 
+use crate::pdu::{PduParseError, PduParseErrorKind};
+
 // TODO: PDU Types, from spec section 3.1
 // COctetStringDecimal
 // COctetStringHex
@@ -92,34 +94,46 @@ impl COctetString {
         bytes: &mut dyn BufRead,
         max_len: usize,
         field_name: &str,
-    ) -> io::Result<Self> {
+    ) -> Result<Self, PduParseError> {
         let mut buf = Vec::new();
         let num = bytes.take(max_len as u64).read_until(0x00, &mut buf)?;
 
         if buf.last() != Some(&0x00) {
             // Failed to read a NULL terminator before we ran out of characters
             if num == max_len {
-                return Err(inv(format!(
-                    "String value for {} is too long.  Max length is {}, including final zero byte.",
-                    field_name, max_len
-                )));
+                return Err(
+                    PduParseError {
+                        kind: PduParseErrorKind::COctetStringTooLong,
+                        message: format!("String value for {} is too long.  Max length is {}, including final zero byte.", field_name, max_len),
+                        command_id: None,
+                        io_errorkind: None
+                    }
+                );
             } else {
-                return Err(inv(format!(
-                    "String value for {} did not end with a zero byte.",
-                    field_name
-                )));
+                return Err(PduParseError {
+                    kind: PduParseErrorKind::COctetStringDoesNotEndWithZeroByte,
+                    message: format!(
+                        "String value for {} did not end with a zero byte.",
+                        field_name
+                    ),
+                    command_id: None,
+                    io_errorkind: None,
+                });
             }
         }
 
         let buf = &buf[..(buf.len() - 1)]; // Remove trailing 0 byte
         AsciiStr::from_ascii(buf)
             .map(|s| COctetString::new(s, max_len))
-            .map_err(|e| {
-                inv(format!(
+            .map_err(|e| PduParseError {
+                kind: PduParseErrorKind::COctetStringIsNotAscii,
+                message: format!(
                     "String value of {} is not ASCII (valid up to byte {}).",
                     field_name,
                     e.valid_up_to()
-                ))
+                ),
+                command_id: None,
+                io_errorkind: None,
             })
     }
 
@@ -131,10 +145,6 @@ impl COctetString {
     pub fn len(&self) -> usize {
         self.value.len()
     }
-}
-
-fn inv(message: String) -> io::Error {
-    io::Error::new::<String>(io::ErrorKind::InvalidData, message.into())
 }
 
 #[cfg(test)]
@@ -207,7 +217,15 @@ mod tests {
     fn read_error_coctetstring() {
         let mut failing_read = FailingRead::new_bufreader();
         let res = COctetString::read(&mut failing_read, 20, "tst").unwrap_err();
-        assert_eq!(res.to_string(), FailingRead::error_string());
+        assert_eq!(
+            res,
+            PduParseError::new(
+                PduParseErrorKind::OtherIoError,
+                "Invalid argument (os error 22)",
+                None,
+                Some(io::ErrorKind::InvalidInput),
+            )
+        );
     }
 
     #[test]
@@ -215,8 +233,13 @@ mod tests {
         let mut bytes = io::BufReader::new("foobar".as_bytes());
         let res = COctetString::read(&mut bytes, 20, "test_field").unwrap_err();
         assert_eq!(
-            res.to_string(),
-            "String value for test_field did not end with a zero byte."
+            res,
+            PduParseError::new(
+                PduParseErrorKind::COctetStringDoesNotEndWithZeroByte,
+                "String value for test_field did not end with a zero byte.",
+                None,
+                None
+            )
         );
     }
 
@@ -225,8 +248,13 @@ mod tests {
         let mut bytes = io::BufReader::new("foobar\0".as_bytes());
         let res = COctetString::read(&mut bytes, 3, "test_field").unwrap_err();
         assert_eq!(
-            res.to_string(),
-            "String value for test_field is too long.  Max length is 3, including final zero byte."
+            res,
+            PduParseError::new(
+                PduParseErrorKind::COctetStringTooLong,
+                "String value for test_field is too long.  Max length is 3, including final zero byte.",
+                None,
+                None
+            )
         );
     }
 
@@ -235,8 +263,13 @@ mod tests {
         let mut bytes = io::BufReader::new("foobar\0".as_bytes());
         let res = COctetString::read(&mut bytes, 6, "test_field").unwrap_err();
         assert_eq!(
-            res.to_string(),
-            "String value for test_field is too long.  Max length is 6, including final zero byte."
+            res,
+            PduParseError::new(
+                PduParseErrorKind::COctetStringTooLong,
+                "String value for test_field is too long.  Max length is 6, including final zero byte.",
+                None,
+                None
+            )
         );
     }
 

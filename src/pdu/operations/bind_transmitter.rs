@@ -1,7 +1,7 @@
 use std::io;
 
 use crate::pdu::formats::{COctetString, Integer1, Integer4, WriteStream};
-use crate::result::Result;
+use crate::pdu::{PduParseError, PduParseErrorKind};
 
 pub const MAX_LENGTH_SYSTEM_ID: usize = 16;
 pub const MAX_LENGTH_PASSWORD: usize = 9;
@@ -21,13 +21,13 @@ pub struct BindTransmitterPdu {
 }
 
 impl BindTransmitterPdu {
-    pub async fn write(&self, _tcp_stream: &mut WriteStream) -> Result<()> {
+    pub async fn write(&self, _tcp_stream: &mut WriteStream) -> io::Result<()> {
         todo!()
     }
 
     pub fn parse(
         bytes: &mut dyn io::BufRead,
-    ) -> io::Result<BindTransmitterPdu> {
+    ) -> Result<BindTransmitterPdu, PduParseError> {
         let command_status = Integer4::read(bytes)?;
         let sequence_number = Integer4::read(bytes)?;
         let system_id =
@@ -46,13 +46,15 @@ impl BindTransmitterPdu {
         )?;
 
         if command_status.value != 0x00 {
-            return Err(io::Error::new(
-                io::ErrorKind::Other,
-                format!(
+            return Err(PduParseError {
+                kind: PduParseErrorKind::StatusIsNotZero,
+                message: format!(
                     "command_status must be 0, but was {}",
                     command_status.value
                 ),
-            ));
+                command_id: None,
+                io_errorkind: None,
+            });
         }
 
         Ok(BindTransmitterPdu {
