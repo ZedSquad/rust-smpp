@@ -7,7 +7,7 @@ use tokio::net::TcpStream;
 use tokio::runtime::Runtime;
 use tokio::time::{sleep, Duration};
 
-use smpp::result::Result;
+use smpp::async_result::AsyncResult;
 use smpp::smsc_app;
 use smpp::smsc_config::SmscConfig;
 
@@ -33,7 +33,7 @@ pub struct TestServer {
 }
 
 impl TestServer {
-    pub fn start() -> Result<TestServer> {
+    pub fn start() -> AsyncResult<TestServer> {
         let _ = env_logger::builder()
             .filter_level(log::LevelFilter::Trace)
             .is_test(true)
@@ -60,7 +60,7 @@ pub struct TestClient {
 }
 
 impl TestClient {
-    pub async fn connect_to(server: &TestServer) -> Result<TestClient> {
+    pub async fn connect_to(server: &TestServer) -> AsyncResult<TestClient> {
         // Force the runtime to actually do something: seems to mean
         // the server is running when we connect to it.  Hopefully
         // there is a better way?
@@ -76,13 +76,13 @@ impl TestClient {
     }
 
     #[allow(dead_code)]
-    pub async fn write_str(&mut self, output: &str) -> Result<()> {
+    pub async fn write_str(&mut self, output: &str) -> AsyncResult<()> {
         self.stream.write_all(output.as_bytes()).await?;
         Ok(())
     }
 
     #[allow(dead_code)]
-    pub async fn read_string(&mut self) -> Result<String> {
+    pub async fn read_string(&mut self) -> AsyncResult<String> {
         let mut buf = vec![0; 1024];
         let n = self.stream.read(&mut buf).await?;
         let ret = String::from_utf8_lossy(&buf[..n]).to_string();

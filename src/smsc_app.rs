@@ -7,17 +7,17 @@ use tokio::io::AsyncReadExt;
 use tokio::net::{TcpListener, TcpStream};
 use tokio::sync::{Semaphore, TryAcquireError};
 
+use crate::async_result::AsyncResult;
 use crate::pdu::formats::{COctetString, Integer4};
 use crate::pdu::{BindTransmitterRespPdu, CheckOutcome, Pdu};
-use crate::result::Result;
 use crate::smsc_config::SmscConfig;
 
-pub fn run(config: SmscConfig) -> Result<()> {
+pub fn run(config: SmscConfig) -> AsyncResult<()> {
     let rt = tokio::runtime::Runtime::new()?;
     rt.block_on(app(config))
 }
 
-pub async fn app(config: SmscConfig) -> Result<()> {
+pub async fn app(config: SmscConfig) -> AsyncResult<()> {
     info!("Starting");
     let sem = Arc::new(Semaphore::new(config.max_open_sockets));
     let listener = TcpListener::bind(&config.bind_address).await?;
@@ -49,7 +49,7 @@ pub async fn app(config: SmscConfig) -> Result<()> {
     }
 }
 
-fn log_result(closed_due_to_exit: Result<bool>, addr: SocketAddr) {
+fn log_result(closed_due_to_exit: AsyncResult<bool>, addr: SocketAddr) {
     match closed_due_to_exit {
         Ok(true) => {
             info!("Connection {} - closed by us due to 'exit' received", addr)
@@ -64,7 +64,10 @@ fn log_result(closed_due_to_exit: Result<bool>, addr: SocketAddr) {
     }
 }
 
-async fn process(tcp_stream: TcpStream, config: &SmscConfig) -> Result<bool> {
+async fn process(
+    tcp_stream: TcpStream,
+    config: &SmscConfig,
+) -> AsyncResult<bool> {
     let mut connection = SmppConnection::new(tcp_stream);
     loop {
         let pdu = connection.read_pdu().await?;
@@ -94,7 +97,7 @@ impl SmppConnection {
         }
     }
 
-    async fn read_pdu(&mut self) -> Result<Option<Pdu>> {
+    async fn read_pdu(&mut self) -> AsyncResult<Option<Pdu>> {
         loop {
             if let Some(pdu) = self.parse_pdu()? {
                 return Ok(Some(pdu));
@@ -110,7 +113,7 @@ impl SmppConnection {
         }
     }
 
-    fn parse_pdu(&mut self) -> Result<Option<Pdu>> {
+    fn parse_pdu(&mut self) -> AsyncResult<Option<Pdu>> {
         let mut buf = Cursor::new(&self.buffer[..]);
         match Pdu::check(&mut buf) {
             Ok(CheckOutcome::Ready) => {
@@ -130,7 +133,7 @@ impl SmppConnection {
         }
     }
 
-    async fn write_pdu(&mut self, pdu: &Pdu) -> Result<()> {
+    async fn write_pdu(&mut self, pdu: &Pdu) -> AsyncResult<()> {
         pdu.write(&mut self.tcp_stream).await.map_err(|e| e.into())
     }
 }
