@@ -6,13 +6,14 @@ use crate::pdu::formats::{Integer4, WriteStream};
 use crate::pdu::validate_command_length::validate_command_length;
 use crate::pdu::{
     check, BindTransmitterPdu, BindTransmitterRespPdu, CheckError,
-    CheckOutcome, PduParseError, PduParseErrorKind,
+    CheckOutcome, GenericNackPdu, PduParseError, PduParseErrorKind,
 };
 
 #[derive(Debug, PartialEq)]
 pub enum Pdu {
     BindTransmitter(BindTransmitterPdu),
     BindTransmitterResp(BindTransmitterRespPdu),
+    GenericNack(GenericNackPdu),
 }
 
 impl Pdu {
@@ -52,6 +53,7 @@ impl Pdu {
         match self {
             Pdu::BindTransmitter(pdu) => pdu.write(stream).await,
             Pdu::BindTransmitterResp(pdu) => pdu.write(stream).await,
+            Pdu::GenericNack(pdu) => pdu.write(stream).await,
         }
     }
 }

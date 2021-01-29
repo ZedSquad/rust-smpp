@@ -10,9 +10,13 @@ use tokio::sync::{Semaphore, TryAcquireError};
 
 use crate::async_result::AsyncResult;
 use crate::pdu::{
-    BindTransmitterRespPdu, CheckOutcome, Pdu, PduParseError, PduParseErrorKind,
+    BindTransmitterRespPdu, CheckOutcome, GenericNackPdu, Pdu, PduParseError,
+    PduParseErrorKind,
 };
 use crate::smsc_config::SmscConfig;
+
+const ERROR_STATUS_CANT_HANDLE_THIS_PDU_TYPE: u32 = 0x00010001;
+const ERROR_STATUS_PDU_HEADER_INVALID: u32 = 0x00010002;
 
 pub fn run(config: SmscConfig) -> AsyncResult<()> {
     let rt = tokio::runtime::Runtime::new()?;
@@ -110,10 +114,16 @@ fn handle_pdu_parse_error(error: &PduParseError) -> Option<Pdu> {
                 BindTransmitterRespPdu::new_failure(0),
             ))
         }
-        // For any PDU type we're not set up for, make no response at all
-        Some(_) => None,
-        // If we don't even know the PDU type, make no response at all
-        None => None,
+        // For any PDU type we're not set up for, send generic_nack
+        Some(_) => Some(Pdu::GenericNack(GenericNackPdu::new(
+            ERROR_STATUS_CANT_HANDLE_THIS_PDU_TYPE,
+            0,
+        ))),
+        // If we don't even know the PDU type, send generic_nack
+        None => Some(Pdu::GenericNack(GenericNackPdu::new(
+            ERROR_STATUS_PDU_HEADER_INVALID,
+            0,
+        ))),
     }
 }
 
