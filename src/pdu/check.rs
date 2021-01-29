@@ -9,8 +9,8 @@ use crate::pdu::validate_command_length::validate_command_length;
 
 #[derive(Debug, PartialEq)]
 pub struct CheckError {
-    message: String,
-    io_errorkind: Option<io::ErrorKind>,
+    pub message: String,
+    pub io_errorkind: Option<io::ErrorKind>,
 }
 
 impl Display for CheckError {
