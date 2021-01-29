@@ -8,7 +8,7 @@ use test_utils::{
 };
 
 #[test]
-fn responds_to_bind_transmitter() {
+fn when_we_receive_bind_transmitter_we_respond_with_resp() {
     // Given an SMSC
     let server = TestServer::start().unwrap();
     server.runtime.block_on(async {
@@ -29,7 +29,7 @@ fn responds_to_bind_transmitter() {
 }
 
 #[test]
-fn responds_failure_to_bad_pdu() {
+fn when_we_receive_a_bad_pdu_we_respond_with_failure_resp_pdu() {
     const PDU: &[u8; 0x29] =
         b"\x00\x00\x00\x29\x00\x00\x00\x02\x00\x00\x00\x00\x00\x00\x00\x14e\xf0\x9f\x92\xa9d\0password\0type\0\x34\x00\x00\0";
 
@@ -57,7 +57,7 @@ fn responds_failure_to_bad_pdu() {
 }
 
 #[test]
-fn keeps_working_when_client_disconnects_within_pdu() {
+fn when_client_disconnects_within_pdu_we_continue_accepting_new_connections() {
     const PDU: &[u8; 0x11] =
         b"\x00\x00\x00\x29\x00\x00\x00\x02\x00\x00\x00\x00\x00\x00\x00\x14e";
 
@@ -75,9 +75,9 @@ fn keeps_working_when_client_disconnects_within_pdu() {
 }
 
 #[test]
-fn responds_generic_nack_to_bad_pdu_header() {
+fn when_sent_bad_pdu_header_we_respond_generic_nack() {
     const PDU: &[u8; 0x04] = b"\x00\x00\x00\x01";
-    //                            length is 1! ^^^^
+    //                        length is 1! ^^^^
 
     const RESP: &[u8; 0x10] =
         b"\x00\x00\x00\x10\x80\x00\x00\x00\x00\x01\x00\x02\x00\x00\x00\x00";
@@ -100,8 +100,35 @@ fn responds_generic_nack_to_bad_pdu_header() {
     })
 }
 
-// TODO: Wrong type of PDU sent (e.g. BIND_RESP sent to an SMSC)
+#[test]
+fn when_we_receive_wrong_type_of_pdu_we_respond_generic_nack() {
+    const RESP: &[u8; 0x10] =
+        b"\x00\x00\x00\x10\x80\x00\x00\x00\x00\x01\x00\x03\x00\x00\x00\x00";
+    //       generic_nack ^^^^^^^^^^^^^^^^      error ^^^^        seq ^^^^
+
+    // Given an SMSC
+    let server = TestServer::start().unwrap();
+    server.runtime.block_on(async {
+        // When ESME sends a BIND_TRANSMITTER_RESP, which does not make sense
+        let mut client = TestClient::connect_to(&server).await.unwrap();
+        client
+            .stream
+            .write(BIND_TRANSMITTER_RESP_PDU)
+            .await
+            .unwrap();
+
+        // Then SMSC responds with an error response
+        let resp = client.read_n(RESP.len()).await;
+        assert_eq!(s(&resp), s(RESP));
+
+        // And then drops the connection
+        let resp = client.stream.read_u8().await.unwrap_err();
+        assert_eq!(&resp.to_string(), "unexpected end of file");
+    })
+}
+
 // TODO: too-short length
 // TODO: too-long length
 // TODO: very very long length
 // TODO: very very long octet string even though length claims it's less
+// TODO: Only create Pdus through ::new methods to enforce e.g. string length

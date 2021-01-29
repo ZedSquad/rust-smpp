@@ -60,7 +60,7 @@ impl Pdu {
 
 #[cfg(test)]
 mod tests {
-    use ascii::AsciiStr;
+    use ascii::{AsciiStr, AsciiString};
     use std::io::Cursor;
 
     use super::*;
@@ -258,6 +258,18 @@ mod tests {
                 Some(0x00000002),
                 None,
             )
+        );
+    }
+
+    #[test]
+    fn parse_valid_bind_transmitter_resp() {
+        let mut cursor = Cursor::new(&BIND_TRANSMITTER_RESP_PDU_PLUS_EXTRA[..]);
+        assert_eq!(
+            Pdu::parse(&mut cursor).unwrap(),
+            Pdu::BindTransmitterResp(BindTransmitterRespPdu::new(
+                0x00000002,
+                &AsciiString::from_ascii("TestServer").unwrap(),
+            ),)
         );
     }
 }

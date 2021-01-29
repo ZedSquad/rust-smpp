@@ -15,8 +15,9 @@ use crate::pdu::{
 };
 use crate::smsc_config::SmscConfig;
 
-const ERROR_STATUS_CANT_HANDLE_THIS_PDU_TYPE: u32 = 0x00010001;
+const ERROR_STATUS_FAILED_TO_PARSE_OTHER_PDU: u32 = 0x00010001;
 const ERROR_STATUS_PDU_HEADER_INVALID: u32 = 0x00010002;
+const ERROR_STATUS_UNEXPECTED_PDU_TYPE: u32 = 0x00010003;
 
 pub fn run(config: SmscConfig) -> AsyncResult<()> {
     let rt = tokio::runtime::Runtime::new()?;
@@ -55,13 +56,10 @@ pub async fn app(config: SmscConfig) -> AsyncResult<()> {
     }
 }
 
-fn log_result(
-    closed_due_to_exit: Result<bool, PduParseError>,
-    addr: SocketAddr,
-) {
-    match closed_due_to_exit {
+fn log_result(closed_by_us: Result<bool, PduParseError>, addr: SocketAddr) {
+    match closed_by_us {
         Ok(true) => {
-            info!("Connection {} - closed by us due to 'exit' received", addr)
+            info!("Connection {} - closed by us", addr)
         }
         Ok(false) => info!(
             "Connection {} - closed since client closed the socket",
@@ -73,6 +71,9 @@ fn log_result(
     }
 }
 
+// TODO: process should return e.g. Result<bool, ProcessError>.  Currently
+//       we are stuffing e.g. "can't handle this PDU type" into a PduParseError.
+
 async fn process(
     tcp_stream: TcpStream,
     config: &SmscConfig,
@@ -83,10 +84,26 @@ async fn process(
         match pdu {
             Ok(pdu) => {
                 if let Some(pdu) = pdu {
-                    let response = handle_pdu(pdu, config).await;
-                    match response {
+                    match handle_pdu(pdu, config).await {
                         Ok(response) => connection.write_pdu(&response).await?,
-                        Err(_e) => todo!("Handle failure to deal with PDU"),
+                        Err(e) => {
+                            // Couldn't handle this PDU type.  Send a
+                            // nack and Drop the connection.
+                            connection
+                                .write_pdu(&Pdu::GenericNack(
+                                    GenericNackPdu::new(
+                                        ERROR_STATUS_UNEXPECTED_PDU_TYPE,
+                                        0, // TODO: all pdus should have a sequence_number, and we should use it here
+                                    ),
+                                ))
+                                .await?;
+                            return Err(PduParseError::new(
+                                PduParseErrorKind::OtherIoError,
+                                &e.to_string(),
+                                None, // TODO: all pdus should have a command id Some(pdu.command_id),
+                                None,
+                            ));
+                        }
                     }
                 } else {
                     // Client closed the connection
@@ -96,9 +113,8 @@ async fn process(
             Err(pdu_parse_error) => {
                 // Respond with an error
                 let response = handle_pdu_parse_error(&pdu_parse_error);
-                if let Some(response) = response {
-                    connection.write_pdu(&response).await?;
-                }
+                connection.write_pdu(&response).await?;
+
                 // Then return the error, so we drop the connection
                 return Err(pdu_parse_error);
             }
@@ -106,24 +122,22 @@ async fn process(
     }
 }
 
-fn handle_pdu_parse_error(error: &PduParseError) -> Option<Pdu> {
+fn handle_pdu_parse_error(error: &PduParseError) -> Pdu {
     match error.command_id {
         Some(0x00000002) => {
             // Parsing failed, so we don't know the sequence number
-            Some(Pdu::BindTransmitterResp(
-                BindTransmitterRespPdu::new_failure(0),
-            ))
+            Pdu::BindTransmitterResp(BindTransmitterRespPdu::new_failure(0))
         }
         // For any PDU type we're not set up for, send generic_nack
-        Some(_) => Some(Pdu::GenericNack(GenericNackPdu::new(
-            ERROR_STATUS_CANT_HANDLE_THIS_PDU_TYPE,
+        Some(_) => Pdu::GenericNack(GenericNackPdu::new(
+            ERROR_STATUS_FAILED_TO_PARSE_OTHER_PDU,
             0,
-        ))),
+        )),
         // If we don't even know the PDU type, send generic_nack
-        None => Some(Pdu::GenericNack(GenericNackPdu::new(
+        None => Pdu::GenericNack(GenericNackPdu::new(
             ERROR_STATUS_PDU_HEADER_INVALID,
             0,
-        ))),
+        )),
     }
 }
 

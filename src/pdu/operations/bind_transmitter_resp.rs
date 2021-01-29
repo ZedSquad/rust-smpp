@@ -4,6 +4,8 @@ use std::io;
 use crate::pdu::formats::{COctetString, Integer4, WriteStream};
 use crate::pdu::PduParseError;
 
+const BIND_TRANSMITTER_RESP: u32 = 0x80000002;
+
 const MAX_LENGTH_SYSTEM_ID: usize = 16;
 
 #[derive(Debug, PartialEq)]
@@ -42,7 +44,7 @@ impl BindTransmitterRespPdu {
     }
 
     pub async fn write(&self, stream: &mut WriteStream) -> io::Result<()> {
-        let command_id = Integer4::new(0x80000002); // bind_transmitter_resp
+        let command_id = Integer4::new(BIND_TRANSMITTER_RESP);
 
         if let Some(body) = &self.body {
             let command_length =
@@ -69,8 +71,26 @@ impl BindTransmitterRespPdu {
     }
 
     pub fn parse(
-        _bytes: &mut dyn io::BufRead,
+        bytes: &mut dyn io::BufRead,
     ) -> Result<BindTransmitterRespPdu, PduParseError> {
-        todo!("BindTransmitterRespPdu::parse");
+        let command_status = Integer4::read(bytes)?;
+        let sequence_number = Integer4::read(bytes)?;
+
+        let body = if command_status.value == 0 {
+            Some(Body {
+                system_id: COctetString::read(
+                    bytes,
+                    MAX_LENGTH_SYSTEM_ID,
+                    "system_id",
+                )?,
+            })
+        } else {
+            None
+        };
+
+        Ok(BindTransmitterRespPdu {
+            sequence_number,
+            body,
+        })
     }
 }
