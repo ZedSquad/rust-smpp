@@ -1,4 +1,4 @@
-use tokio::io::AsyncWriteExt;
+use tokio::io::{AsyncReadExt, AsyncWriteExt};
 
 mod test_utils;
 
@@ -49,6 +49,10 @@ fn responds_failure_to_bad_pdu() {
         // Then SMSC responds with an error response
         let resp = client.read_n(RESP.len()).await;
         assert_eq!(s(&resp), s(RESP));
+
+        // And then drops the connection
+        let resp = client.stream.read_u8().await.unwrap_err();
+        assert_eq!(&resp.to_string(), "unexpected end of file");
     })
 }
 
