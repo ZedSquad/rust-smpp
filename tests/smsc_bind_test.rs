@@ -56,7 +56,24 @@ fn responds_failure_to_bad_pdu() {
     })
 }
 
-// TODO: partial PDU provided (with length implying longer)
+#[test]
+fn keeps_working_when_client_disconnects_within_pdu() {
+    pub const PDU: &[u8; 0x11] =
+        b"\x00\x00\x00\x29\x00\x00\x00\x02\x00\x00\x00\x00\x00\x00\x00\x14e";
+
+    // Given an SMSC
+    let server = TestServer::start().unwrap();
+    server.runtime.block_on(async {
+        // When ESME sends partial data then disconnects
+        let mut client1 = TestClient::connect_to(&server).await.unwrap();
+        client1.stream.write(PDU).await.unwrap();
+        client1.stream.shutdown().await.unwrap();
+
+        // Another client is free to connect afterwards
+        TestClient::connect_to(&server).await.unwrap();
+    })
+}
+
 // TODO: Wrong type of PDU sent (e.g. BIND_RESP sent to an SMSC)
 // TODO: too-short length
 // TODO: too-long length
