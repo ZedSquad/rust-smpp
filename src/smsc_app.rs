@@ -212,6 +212,11 @@ impl SmppConnection {
                 None,
                 e.io_errorkind,
             )),
+            // Note: it would be good to respond with a specific error here,
+            // instead of generic_nack.  That should be possible in some cases
+            // if we can read the PDU header before we reject it.  It's not
+            // too bad to do this though, because the PDU is actually
+            // malformed, so not knowing what type it is is forgivable.
         }
     }
 
