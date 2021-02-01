@@ -1,3 +1,4 @@
+use std::iter;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 
 mod test_utils;
@@ -13,7 +14,7 @@ fn when_we_receive_bind_transmitter_we_respond_with_resp() {
     let server = TestServer::start().unwrap();
     server.runtime.block_on(async {
         // When ESME binds with:
-        // * sequence number = 1
+        // * sequence number = 2
         let mut client = TestClient::connect_to(&server).await.unwrap();
         client.stream.write(BIND_TRANSMITTER_PDU).await.unwrap();
 
@@ -21,7 +22,7 @@ fn when_we_receive_bind_transmitter_we_respond_with_resp() {
         // * length = 1b
         // * type   80000002
         // * status 0 (because all is OK)
-        // * sequence number = 1 (because that is what we provided)
+        // * sequence number = 2 (because that is what we provided)
         // * system_id = TestServer (as set up in TestServer)
         let resp = client.read_n(BIND_TRANSMITTER_RESP_PDU.len()).await;
         assert_eq!(s(&resp), s(BIND_TRANSMITTER_RESP_PDU));
@@ -127,8 +128,43 @@ fn when_we_receive_wrong_type_of_pdu_we_respond_generic_nack() {
     })
 }
 
-// TODO: too-short length
-// TODO: too-long length
+#[test]
+fn when_we_receive_nontlv_pdu_with_too_long_length_return_an_error() {
+    const PDU: &[u8; 0x29] =
+        b"\x00\x00\xff\xff\x00\x00\x00\x02\x00\x00\x00\x00\x00\x00\x00\x02esmeid\0password\0type\0\x34\x00\x00\0";
+    //            ^^^^^^^^ length longer than content
+
+    const RESP: &[u8; 0x10] =
+        b"\x00\x00\x00\x10\x80\x00\x00\x02\x00\x00\x00\x01\x00\x00\x00\x00";
+    //          bind_transmitter_resp ^^^^
+
+    let many_bytes: Vec<u8> = PDU
+        .iter()
+        .copied()
+        .chain(iter::repeat(0x00))
+        .take(100_000)
+        .collect();
+
+    // Given an SMSC
+    let server = TestServer::start().unwrap();
+    server.runtime.block_on(async {
+        // When we send a short PDU with a length value suggesting it is long
+        let mut client = TestClient::connect_to(&server).await.unwrap();
+        client.stream.write(&many_bytes).await.unwrap();
+
+        // Then SMSC responds with bind_transmitter_resp error
+        let resp = client.read_n(RESP.len()).await;
+        assert_eq!(s(&resp), s(RESP));
+
+        // And then drops the connection
+        let resp = client.stream.read_u8().await.unwrap_err();
+        assert_eq!(
+            &resp.to_string(),
+            "Connection reset by peer (os error 104)"
+        );
+    })
+}
+
 // TODO: very very long length
 // TODO: very very long octet string even though length claims it's less
 // TODO: Only create Pdus through ::new methods to enforce e.g. string length

@@ -40,7 +40,29 @@ impl Pdu {
         .map_err(|mut e| {
             e.command_id = Some(command_id.value);
             e
-        })
+        }).and_then(|ret| {
+            // There should be no bytes left over
+            let mut buf = [0; 1];
+            if bytes.read(&mut buf)? == 0 {
+                Ok(ret)
+            } else {
+                Err(PduParseError {
+                    kind: PduParseErrorKind::LengthLongerThanPdu,
+                    message: format!(
+                        "Finished parsing PDU with command_id: {} but its length suggested it was longer.",
+                        command_id.value
+                    ),
+                    command_id: Some(command_id.value),
+                    io_errorkind: None,
+                })
+                // Note: Ideally, the sequence number in the response would
+                // match the one supplied, but currently we don't include that.
+                // This seems OK since really PDU does not parse correctly, but
+                // it would be even better if we parsed the header and used that
+                // to shape our error responses.
+            }
+        }
+        )
     }
 
     pub fn check(

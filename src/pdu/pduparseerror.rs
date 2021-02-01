@@ -4,6 +4,7 @@ use std::io;
 
 #[derive(Debug, PartialEq)]
 pub enum PduParseErrorKind {
+    LengthLongerThanPdu,
     LengthTooLong,
     LengthTooShort,
     COctetStringDoesNotEndWithZeroByte,
