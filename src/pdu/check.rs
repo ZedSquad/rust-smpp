@@ -46,7 +46,7 @@ pub fn check(bytes: &mut dyn io::BufRead) -> Result<CheckOutcome, CheckError> {
                     return Err(CheckError {
                         message: e.message,
                         io_errorkind: None,
-                    })
+                    });
                 }
             }
             check_can_read(bytes, len.value)

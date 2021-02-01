@@ -165,6 +165,39 @@ fn when_we_receive_nontlv_pdu_with_too_long_length_return_an_error() {
     })
 }
 
-// TODO: very very long length
+#[test]
+fn when_we_receive_a_pdu_with_very_long_length_we_respond_generic_nack() {
+    const PDU: &[u8; 0x1b] =
+        b"\x00\xff\xff\xff\x00\x00\x00\x02\x00\x00\x00\x00\x00\x00\x00\x02e\0pd\0t\0\x34\x00\x00\0";
+    //            ^^^^^^^^ very long length
+
+    const RESP: &[u8; 0x10] =
+        b"\x00\x00\x00\x10\x80\x00\x00\x00\x00\x01\x00\x02\x00\x00\x00\x00";
+    //       generic_nack ^^^^^^^^^^^^^^^^      error ^^^^        seq ^^^^
+
+    let many_bytes: Vec<u8> = PDU
+        .iter()
+        .copied()
+        .chain(iter::repeat(0x00))
+        .take(1000)
+        .collect();
+
+    // Given an SMSC
+    let server = TestServer::start().unwrap();
+    server.runtime.block_on(async {
+        // When we send a huge PDU with huge length
+        let mut client = TestClient::connect_to(&server).await.unwrap();
+        client.stream.write(&many_bytes).await.unwrap();
+
+        // Then SMSC responds with a generic error
+        let resp = client.read_n(RESP.len()).await;
+        assert_eq!(s(&resp), s(RESP));
+
+        // And then drops the connection
+        let resp = client.stream.read_u8().await.unwrap_err();
+        assert_eq!(&resp.to_string(), "unexpected end of file");
+    })
+}
+
 // TODO: very very long octet string even though length claims it's less
 // TODO: Only create Pdus through ::new methods to enforce e.g. string length
