@@ -1,5 +1,7 @@
 use bytes::{Buf, BytesMut};
+use core::fmt::{Display, Formatter};
 use log::*;
+use std::error;
 use std::io;
 use std::io::Cursor;
 use std::net::SocketAddr;
@@ -56,7 +58,7 @@ pub async fn app(config: SmscConfig) -> AsyncResult<()> {
     }
 }
 
-fn log_result(closed_by_us: Result<bool, PduParseError>, addr: SocketAddr) {
+fn log_result(closed_by_us: Result<bool, ProcessError>, addr: SocketAddr) {
     match closed_by_us {
         Ok(true) => {
             info!("Connection {} - closed by us", addr)
@@ -71,13 +73,60 @@ fn log_result(closed_by_us: Result<bool, PduParseError>, addr: SocketAddr) {
     }
 }
 
-// TODO: process should return e.g. Result<bool, ProcessError>.  Currently
-//       we are stuffing e.g. "can't handle this PDU type" into a PduParseError.
+#[derive(Debug)]
+struct UnexpectedPduType {
+    /*    command_id: i32,
+sequence_number: i32,*/}
+
+#[derive(Debug)]
+enum ProcessError {
+    PduParseError(PduParseError),
+    UnexpectedPduType(UnexpectedPduType),
+    IoError(io::Error),
+}
+
+impl ProcessError {
+    fn new_unexpected_pdu_type() -> Self {
+        ProcessError::UnexpectedPduType(UnexpectedPduType {})
+    }
+}
+
+impl From<PduParseError> for ProcessError {
+    fn from(pdu_parse_error: PduParseError) -> Self {
+        ProcessError::PduParseError(pdu_parse_error)
+    }
+}
+
+impl From<io::Error> for ProcessError {
+    fn from(io_error: io::Error) -> Self {
+        ProcessError::IoError(io_error)
+    }
+}
+
+impl Display for ProcessError {
+    fn fmt(
+        &self,
+        formatter: &mut Formatter,
+    ) -> std::result::Result<(), std::fmt::Error> {
+        let s = match self {
+            ProcessError::PduParseError(e) => e.to_string(),
+            // Issue#1: UnexpectedPduType should have command_id
+            // and sequence_number
+            ProcessError::UnexpectedPduType(_) => {
+                format!("Unexpected PDU type")
+            }
+            ProcessError::IoError(e) => e.to_string(),
+        };
+        formatter.write_str(&s)
+    }
+}
+
+impl error::Error for ProcessError {}
 
 async fn process(
     tcp_stream: TcpStream,
     config: &SmscConfig,
-) -> Result<bool, PduParseError> {
+) -> Result<bool, ProcessError> {
     let mut connection = SmppConnection::new(tcp_stream);
     loop {
         let pdu = connection.read_pdu().await;
@@ -87,8 +136,7 @@ async fn process(
                     match handle_pdu(pdu, config).await {
                         Ok(response) => connection.write_pdu(&response).await?,
                         Err(e) => {
-                            // Couldn't handle this PDU type.  Send a
-                            // nack and Drop the connection.
+                            // Couldn't handle this PDU type.  Send a nack...
                             connection
                                 .write_pdu(&Pdu::GenericNack(
                                     GenericNackPdu::new(
@@ -99,13 +147,8 @@ async fn process(
                                     ),
                                 ))
                                 .await?;
-                            return Err(PduParseError::new(
-                                PduParseErrorKind::OtherIoError,
-                                &e.to_string(),
-                                None, // Issue#1: all pdus should have a
-                                      // command id: Some(pdu.command_id)
-                                None,
-                            ));
+                            // ...and Drop the connection.
+                            return Err(e);
                         }
                     }
                 } else {
@@ -119,7 +162,7 @@ async fn process(
                 connection.write_pdu(&response).await?;
 
                 // Then return the error, so we drop the connection
-                return Err(pdu_parse_error);
+                return Err(pdu_parse_error.into());
             }
         }
     }
@@ -144,7 +187,10 @@ fn handle_pdu_parse_error(error: &PduParseError) -> Pdu {
     }
 }
 
-async fn handle_pdu(pdu: Pdu, config: &SmscConfig) -> Result<Pdu, String> {
+async fn handle_pdu(
+    pdu: Pdu,
+    config: &SmscConfig,
+) -> Result<Pdu, ProcessError> {
     info!("<= {:?}", pdu);
     match pdu {
         Pdu::BindTransmitter(pdu) => {
@@ -153,7 +199,8 @@ async fn handle_pdu(pdu: Pdu, config: &SmscConfig) -> Result<Pdu, String> {
                 &config.system_id,
             )))
         }
-        _ => Err(String::from("Don't know what to do with this PDU type")),
+        // Issue#1: all pdus should have a command id: Some(pdu.command_id)
+        _ => Err(ProcessError::new_unexpected_pdu_type()),
     }
 }
 
