@@ -33,12 +33,14 @@ fn when_we_receive_bind_transmitter_we_respond_with_resp() {
 fn when_we_receive_a_bad_pdu_we_respond_with_failure_resp_pdu() {
     const PDU: &[u8; 0x29] =
         b"\x00\x00\x00\x29\x00\x00\x00\x02\x00\x00\x00\x00\x00\x00\x00\x14e\xf0\x9f\x92\xa9d\0password\0type\0\x34\x00\x00\0";
+    //                                                          non-ascii  ^^^^
 
     const RESP: &[u8; 0x10] =
         b"\x00\x00\x00\x10\x80\x00\x00\x02\x00\x00\x00\x01\x00\x00\x00\x00";
     //                                          error ^^^^        seq ^^^^
     // Note: no body part because this is an error response
-    // Note: sequence numbers don't match because PDU was not parsed
+
+    // Issue#1: sequence_number could be copied into error here
 
     // Given an SMSC
     let server = TestServer::start().unwrap();
@@ -138,6 +140,8 @@ fn when_we_receive_nontlv_pdu_with_too_long_length_return_an_error() {
         b"\x00\x00\x00\x10\x80\x00\x00\x02\x00\x00\x00\x01\x00\x00\x00\x00";
     //          bind_transmitter_resp ^^^^
 
+    // Issue#1: sequence_number could be copied into error here
+
     let many_bytes: Vec<u8> = PDU
         .iter()
         .copied()
@@ -175,6 +179,8 @@ fn when_we_receive_a_pdu_with_very_long_length_we_respond_generic_nack() {
         b"\x00\x00\x00\x10\x80\x00\x00\x00\x00\x01\x00\x02\x00\x00\x00\x00";
     //       generic_nack ^^^^^^^^^^^^^^^^      error ^^^^        seq ^^^^
 
+    // Issue#1: could be a more specific response?
+
     let many_bytes: Vec<u8> = PDU
         .iter()
         .copied()
@@ -199,5 +205,42 @@ fn when_we_receive_a_pdu_with_very_long_length_we_respond_generic_nack() {
     })
 }
 
-// TODO: very very long octet string even though length claims it's less
+#[test]
+fn when_receive_pdu_with_short_length_but_long_string_we_respond_with_error() {
+    const BEGIN: &[u8; 0x11] =
+        b"\x00\x00\x00\x1b\x00\x00\x00\x02\x00\x00\x00\x00\x00\x00\x00\x02e";
+    const END: &[u8; 0x0a] = b"\0pd\0t\0\x34\x00\x00\0";
+
+    const RESP: &[u8; 0x10] =
+        b"\x00\x00\x00\x10\x80\x00\x00\x02\x00\x00\x00\x01\x00\x00\x00\x00";
+    //          bind_transmitter_resp ^^^^
+
+    // Issue#1: sequence_number could be copied into error here
+
+    // Our PDU will contain 100,000 letter 'e's within a COctetString
+    let mut many_bytes: Vec<u8> = vec![];
+    many_bytes.extend(BEGIN.iter());
+    many_bytes.extend(iter::repeat('e' as u8).take(100_000));
+    many_bytes.extend(END.iter());
+
+    // Given an SMSC
+    let server = TestServer::start().unwrap();
+    server.runtime.block_on(async {
+        // When we send a huge PDU with small length
+        let mut client = TestClient::connect_to(&server).await.unwrap();
+        client.stream.write(&many_bytes).await.unwrap();
+
+        // Then SMSC responds with a generic error
+        let resp = client.read_n(RESP.len()).await;
+        assert_eq!(s(&resp), s(RESP));
+
+        // And then drops the connection
+        let resp = client.stream.read_u8().await.unwrap_err();
+        assert_eq!(
+            &resp.to_string(),
+            "Connection reset by peer (os error 104)"
+        );
+    })
+}
+
 // TODO: Only create Pdus through ::new methods to enforce e.g. string length
