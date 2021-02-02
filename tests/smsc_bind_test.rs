@@ -242,5 +242,3 @@ fn when_receive_pdu_with_short_length_but_long_string_we_respond_with_error() {
         );
     })
 }
-
-// TODO: Only create Pdus through ::new methods to enforce e.g. string length
