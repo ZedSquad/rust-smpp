@@ -82,12 +82,10 @@ impl Pdu {
 
 #[cfg(test)]
 mod tests {
-    use ascii::{AsciiStr, AsciiString};
+    use ascii::AsciiString;
     use std::io::Cursor;
 
     use super::*;
-    use crate::pdu::formats::{COctetString, Integer1};
-    use crate::pdu::operations::bind_transmitter;
 
     const BIND_TRANSMITTER_RESP_PDU_PLUS_EXTRA: &[u8; 0x1b + 0xa] =
         b"\x00\x00\x00\x1b\x80\x00\x00\x02\x00\x00\x00\x00\x00\x00\x00\x02TestServer\0extrabytes";
@@ -115,28 +113,19 @@ mod tests {
         let mut cursor = Cursor::new(&BIND_TRANSMITTER_PDU_PLUS_EXTRA[..]);
         assert_eq!(
             Pdu::parse(&mut cursor).unwrap(),
-            Pdu::BindTransmitter(BindTransmitterPdu {
-                sequence_number: Integer4::new(0x01020344),
-                system_id: COctetString::new(
-                    AsciiStr::from_ascii("mysystem_ID").unwrap(),
-                    bind_transmitter::MAX_LENGTH_SYSTEM_ID
-                ),
-                password: COctetString::new(
-                    AsciiStr::from_ascii("pw$xx").unwrap(),
-                    bind_transmitter::MAX_LENGTH_PASSWORD
-                ),
-                system_type: COctetString::new(
-                    AsciiStr::from_ascii("t_p_").unwrap(),
-                    bind_transmitter::MAX_LENGTH_SYSTEM_TYPE
-                ),
-                interface_version: Integer1::new(0x34),
-                addr_ton: Integer1::new(0x13),
-                addr_npi: Integer1::new(0x50),
-                address_range: COctetString::new(
-                    AsciiStr::from_ascii("rng").unwrap(),
-                    bind_transmitter::MAX_LENGTH_ADDRESS_RANGE
-                ),
-            })
+            Pdu::BindTransmitter(
+                BindTransmitterPdu::new(
+                    0x01020344,
+                    "mysystem_ID",
+                    "pw$xx",
+                    "t_p_",
+                    0x34,
+                    0x13,
+                    0x50,
+                    "rng"
+                )
+                .unwrap()
+            )
         );
     }
 

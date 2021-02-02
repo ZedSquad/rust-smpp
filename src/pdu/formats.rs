@@ -85,6 +85,7 @@ pub struct COctetString {
 impl COctetString {
     pub fn new(value: &AsciiStr, max_len: usize) -> Self {
         assert!(value.len() <= max_len);
+        // TODO: return Result here instead of asserting
         Self {
             value: AsciiString::from(value),
         }
@@ -123,18 +124,10 @@ impl COctetString {
         }
 
         let buf = &buf[..(buf.len() - 1)]; // Remove trailing 0 byte
-        AsciiStr::from_ascii(buf)
-            .map(|s| COctetString::new(s, max_len))
-            .map_err(|e| PduParseError {
-                kind: PduParseErrorKind::COctetStringIsNotAscii,
-                message: format!(
-                    "String value of {} is not ASCII (valid up to byte {}).",
-                    field_name,
-                    e.valid_up_to()
-                ),
-                command_id: None,
-                io_errorkind: None,
-            })
+
+        let asc = AsciiStr::from_ascii(buf)
+            .map_err(|e| PduParseError::from_asasciistrerror(e, field_name))?;
+        Ok(COctetString::new(asc, max_len))
     }
 
     pub async fn write(&self, stream: &mut WriteStream) -> io::Result<()> {

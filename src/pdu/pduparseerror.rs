@@ -1,3 +1,4 @@
+use ascii::AsAsciiStrError;
 use core::fmt::{Display, Formatter};
 use std::error;
 use std::io;
@@ -36,6 +37,19 @@ impl PduParseError {
             message: String::from(message),
             command_id,
             io_errorkind,
+        }
+    }
+
+    pub fn from_asasciistrerror(e: AsAsciiStrError, field_name: &str) -> Self {
+        Self {
+            kind: PduParseErrorKind::COctetStringIsNotAscii,
+            message: format!(
+                "String value of {} is not ASCII (valid up to byte {}).",
+                field_name,
+                e.valid_up_to()
+            ),
+            command_id: None,
+            io_errorkind: None,
         }
     }
 }

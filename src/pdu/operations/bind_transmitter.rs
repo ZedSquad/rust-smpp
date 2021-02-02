@@ -1,26 +1,67 @@
+use ascii::AsciiStr;
 use std::io;
 
 use crate::pdu::formats::{COctetString, Integer1, Integer4, WriteStream};
 use crate::pdu::{PduParseError, PduParseErrorKind};
 
-pub const MAX_LENGTH_SYSTEM_ID: usize = 16;
-pub const MAX_LENGTH_PASSWORD: usize = 9;
-pub const MAX_LENGTH_SYSTEM_TYPE: usize = 13;
-pub const MAX_LENGTH_ADDRESS_RANGE: usize = 41;
+const MAX_LENGTH_SYSTEM_ID: usize = 16;
+const MAX_LENGTH_PASSWORD: usize = 9;
+const MAX_LENGTH_SYSTEM_TYPE: usize = 13;
+const MAX_LENGTH_ADDRESS_RANGE: usize = 41;
 
 #[derive(Debug, PartialEq)]
 pub struct BindTransmitterPdu {
     pub sequence_number: Integer4,
-    pub system_id: COctetString,
-    pub password: COctetString,
-    pub system_type: COctetString,
-    pub interface_version: Integer1,
-    pub addr_ton: Integer1,
-    pub addr_npi: Integer1,
-    pub address_range: COctetString,
+    system_id: COctetString,
+    password: COctetString,
+    system_type: COctetString,
+    interface_version: Integer1,
+    addr_ton: Integer1,
+    addr_npi: Integer1,
+    address_range: COctetString,
 }
 
 impl BindTransmitterPdu {
+    pub fn new(
+        sequence_number: u32,
+        system_id: &str,
+        password: &str,
+        system_type: &str,
+        interface_version: u8,
+        addr_ton: u8,
+        addr_npi: u8,
+        address_range: &str,
+    ) -> Result<Self, PduParseError> {
+        Ok(Self {
+            sequence_number: Integer4::new(sequence_number),
+            system_id: COctetString::new(
+                AsciiStr::from_ascii(system_id).map_err(|e| {
+                    PduParseError::from_asasciistrerror(e, "system_id")
+                })?,
+                MAX_LENGTH_SYSTEM_ID,
+            ),
+            password: COctetString::new(
+                AsciiStr::from_ascii(password).map_err(|e| {
+                    PduParseError::from_asasciistrerror(e, "system_id")
+                })?,
+                MAX_LENGTH_PASSWORD,
+            ),
+            system_type: COctetString::new(
+                AsciiStr::from_ascii(system_type).map_err(|e| {
+                    PduParseError::from_asasciistrerror(e, "system_id")
+                })?,
+                MAX_LENGTH_SYSTEM_TYPE,
+            ),
+            interface_version: Integer1::new(interface_version),
+            addr_ton: Integer1::new(addr_ton),
+            addr_npi: Integer1::new(addr_npi),
+            address_range: COctetString::new(
+                AsciiStr::from_ascii(address_range).unwrap(),
+                MAX_LENGTH_ADDRESS_RANGE,
+            ),
+        })
+    }
+
     pub async fn write(&self, _stream: &mut WriteStream) -> io::Result<()> {
         todo!()
     }
