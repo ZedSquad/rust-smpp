@@ -197,7 +197,7 @@ async fn handle_pdu(
             Ok(Pdu::BindTransmitterResp(BindTransmitterRespPdu::new(
                 pdu.sequence_number.value,
                 &config.system_id,
-            )))
+            )?))
         }
         // Issue#1: all pdus should have a command id: Some(pdu.command_id)
         _ => Err(ProcessError::new_unexpected_pdu_type()),

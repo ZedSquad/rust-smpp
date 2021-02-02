@@ -1,4 +1,3 @@
-use ascii::AsciiString;
 use env_logger::Env;
 use log::*;
 
@@ -9,7 +8,7 @@ fn main() {
     let smsc_config = SmscConfig {
         bind_address: String::from("0.0.0.0:8080"),
         max_open_sockets: 100,
-        system_id: AsciiString::from_ascii("rust_smpp").unwrap(),
+        system_id: String::from("rust_smpp"),
     };
 
     env_logger::Builder::from_env(Env::default().default_filter_or("info"))

@@ -83,11 +83,25 @@ pub struct COctetString {
 // it.
 
 impl COctetString {
-    pub fn new(value: &AsciiStr, max_len: usize) -> Self {
-        assert!(value.len() <= max_len);
-        // TODO: return Result here instead of asserting
-        Self {
-            value: AsciiString::from(value),
+    pub fn new(
+        value: &AsciiStr,
+        max_len: usize,
+    ) -> Result<Self, PduParseError> {
+        if value.len() < max_len {
+            Ok(Self {
+                value: AsciiString::from(value),
+            })
+        } else {
+            Err(PduParseError::new(
+                    PduParseErrorKind::COctetStringTooLong,
+                    &format!(
+                        "String value is too long. Max length is {}, including final zero byte.",
+                        max_len
+                    ),
+                    None,
+                    None,
+                )
+            )
         }
     }
 
@@ -105,7 +119,11 @@ impl COctetString {
                 return Err(
                     PduParseError {
                         kind: PduParseErrorKind::COctetStringTooLong,
-                        message: format!("String value for {} is too long.  Max length is {}, including final zero byte.", field_name, max_len),
+                        message: format!(
+                            "String value for {} is too long.  Max length is {}, including final zero byte.",
+                            field_name,
+                            max_len
+                        ),
                         command_id: None,
                         io_errorkind: None
                     }
@@ -127,7 +145,7 @@ impl COctetString {
 
         let asc = AsciiStr::from_ascii(buf)
             .map_err(|e| PduParseError::from_asasciistrerror(e, field_name))?;
-        Ok(COctetString::new(asc, max_len))
+        COctetString::new(asc, max_len)
     }
 
     pub async fn write(&self, stream: &mut WriteStream) -> io::Result<()> {
@@ -194,6 +212,7 @@ mod tests {
         assert_eq!(
             COctetString::read(&mut bytes, 20, "test_field").unwrap(),
             COctetString::new(AsciiStr::from_ascii("foobar").unwrap(), 20)
+                .unwrap()
         );
     }
 
@@ -203,6 +222,7 @@ mod tests {
         assert_eq!(
             COctetString::read(&mut bytes, 11, "test_field").unwrap(),
             COctetString::new(AsciiStr::from_ascii("thisislong").unwrap(), 11)
+                .unwrap()
         );
     }
 
@@ -269,7 +289,8 @@ mod tests {
     #[tokio::test]
     async fn write_coctetstring() {
         let mut buf: Vec<u8> = Vec::new();
-        let val = COctetString::new(AsciiStr::from_ascii("abc").unwrap(), 16);
+        let val = COctetString::new(AsciiStr::from_ascii("abc").unwrap(), 16)
+            .unwrap();
         val.write(&mut buf).await.unwrap();
         assert_eq!(buf, vec!['a' as u8, 'b' as u8, 'c' as u8, 0x00]);
     }

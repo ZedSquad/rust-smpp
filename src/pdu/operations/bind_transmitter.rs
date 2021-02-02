@@ -39,26 +39,26 @@ impl BindTransmitterPdu {
                     PduParseError::from_asasciistrerror(e, "system_id")
                 })?,
                 MAX_LENGTH_SYSTEM_ID,
-            ),
+            )?,
             password: COctetString::new(
                 AsciiStr::from_ascii(password).map_err(|e| {
                     PduParseError::from_asasciistrerror(e, "system_id")
                 })?,
                 MAX_LENGTH_PASSWORD,
-            ),
+            )?,
             system_type: COctetString::new(
                 AsciiStr::from_ascii(system_type).map_err(|e| {
                     PduParseError::from_asasciistrerror(e, "system_id")
                 })?,
                 MAX_LENGTH_SYSTEM_TYPE,
-            ),
+            )?,
             interface_version: Integer1::new(interface_version),
             addr_ton: Integer1::new(addr_ton),
             addr_npi: Integer1::new(addr_npi),
             address_range: COctetString::new(
                 AsciiStr::from_ascii(address_range).unwrap(),
                 MAX_LENGTH_ADDRESS_RANGE,
-            ),
+            )?,
         })
     }
 

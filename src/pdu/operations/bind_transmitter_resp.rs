@@ -1,4 +1,4 @@
-use ascii::AsciiString;
+use ascii::AsciiStr;
 use std::io;
 
 use crate::pdu::formats::{COctetString, Integer4, WriteStream};
@@ -27,13 +27,21 @@ pub struct BindTransmitterRespPdu {
 }
 
 impl BindTransmitterRespPdu {
-    pub fn new(sequence_number: u32, system_id: &AsciiString) -> Self {
-        Self {
+    pub fn new(
+        sequence_number: u32,
+        system_id: &str,
+    ) -> Result<Self, PduParseError> {
+        Ok(Self {
             sequence_number: Integer4::new(sequence_number),
             body: Some(Body {
-                system_id: COctetString::new(system_id, MAX_LENGTH_SYSTEM_ID),
+                system_id: COctetString::new(
+                    AsciiStr::from_ascii(system_id).map_err(|e| {
+                        PduParseError::from_asasciistrerror(e, "system_id")
+                    })?,
+                    MAX_LENGTH_SYSTEM_ID,
+                )?,
             }),
-        }
+        })
     }
 
     pub fn new_failure(sequence_number: u32) -> Self {
