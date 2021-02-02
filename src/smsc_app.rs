@@ -93,14 +93,17 @@ async fn process(
                                 .write_pdu(&Pdu::GenericNack(
                                     GenericNackPdu::new(
                                         ERROR_STATUS_UNEXPECTED_PDU_TYPE,
-                                        0, // TODO: all pdus should have a sequence_number, and we should use it here
+                                        0, // Issue#1: all pdus should have a
+                                           // sequence_number, and we should
+                                           // use it here: pdu.sequence_number
                                     ),
                                 ))
                                 .await?;
                             return Err(PduParseError::new(
                                 PduParseErrorKind::OtherIoError,
                                 &e.to_string(),
-                                None, // TODO: all pdus should have a command id Some(pdu.command_id),
+                                None, // Issue#1: all pdus should have a
+                                      // command id: Some(pdu.command_id)
                                 None,
                             ));
                         }
@@ -212,7 +215,7 @@ impl SmppConnection {
                 None,
                 e.io_errorkind,
             )),
-            // Note: it would be good to respond with a specific error here,
+            // Issue#1: it would be good to respond with a specific error here,
             // instead of generic_nack.  That should be possible in some cases
             // if we can read the PDU header before we reject it.  It's not
             // too bad to do this though, because the PDU is actually
