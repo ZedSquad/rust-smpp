@@ -1,4 +1,3 @@
-use ascii::AsciiStr;
 use std::io;
 
 use crate::pdu::formats::{COctetString, Integer4, WriteStream};
@@ -34,12 +33,13 @@ impl BindTransmitterRespPdu {
         Ok(Self {
             sequence_number: Integer4::new(sequence_number),
             body: Some(Body {
-                system_id: COctetString::new(
-                    AsciiStr::from_ascii(system_id).map_err(|e| {
-                        PduParseError::from_asasciistrerror(e, "system_id")
-                    })?,
+                system_id: COctetString::from_str(
+                    system_id,
                     MAX_LENGTH_SYSTEM_ID,
-                )?,
+                )
+                .map_err(|e| {
+                    PduParseError::from_octetstringcreationerror(e, "system_id")
+                })?,
             }),
         })
     }
@@ -86,11 +86,13 @@ impl BindTransmitterRespPdu {
 
         let body = if command_status.value == 0 {
             Some(Body {
-                system_id: COctetString::read(
-                    bytes,
-                    MAX_LENGTH_SYSTEM_ID,
-                    "system_id",
-                )?,
+                system_id: COctetString::read(bytes, MAX_LENGTH_SYSTEM_ID)
+                    .map_err(|e| {
+                        PduParseError::from_octetstringcreationerror(
+                            e,
+                            "system_id",
+                        )
+                    })?,
             })
         } else {
             None

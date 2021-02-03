@@ -1,7 +1,8 @@
-use ascii::AsAsciiStrError;
 use core::fmt::{Display, Formatter};
 use std::error;
 use std::io;
+
+use super::formats::OctetStringCreationError;
 
 #[derive(Debug, PartialEq)]
 pub enum PduParseErrorKind {
@@ -16,6 +17,26 @@ pub enum PduParseErrorKind {
     StatusIsNotZero,
     UnknownCommandId,
 }
+
+/* TODO: use this PduParseError
+pub enum DraftPduParseErrorBody {
+    LengthLongerThanPdu(u32),
+    LengthTooLong(u32),
+    LengthTooShort(u32),
+    NotEnoughBytes,
+    OctetStringCreationError(OctetStringCreationError),
+    OtherIoError(io::Error),
+    StatusIsNotZero(u32),
+    UnknownCommandId,
+}
+
+pub struct DraftPduParseError {
+    command_id: Option<u32>,
+    sequence_number: Option<u32>,
+    field_name: Option<String>,
+    body: DraftPduParseErrorBody,
+}
+*/
 
 #[derive(Debug, PartialEq)]
 pub struct PduParseError {
@@ -40,16 +61,16 @@ impl PduParseError {
         }
     }
 
-    pub fn from_asasciistrerror(e: AsAsciiStrError, field_name: &str) -> Self {
-        Self {
-            kind: PduParseErrorKind::COctetStringIsNotAscii,
-            message: format!(
-                "String value of {} is not ASCII (valid up to byte {}).",
-                field_name,
-                e.valid_up_to()
-            ),
-            command_id: None,
-            io_errorkind: None,
+    pub fn from_octetstringcreationerror(
+        e: OctetStringCreationError,
+        field_name: &str,
+    ) -> PduParseError {
+        match e {
+            OctetStringCreationError::DoesNotEndWithZeroByte =>
+                PduParseError::new(PduParseErrorKind::COctetStringDoesNotEndWithZeroByte, &format!("String value for {} did not end with a zero byte.", field_name), None, None),
+            OctetStringCreationError::TooLong(max_len) => PduParseError::new(PduParseErrorKind::COctetStringTooLong, &format!("String value for {} is too long.  Max length is {}, including final zero byte.", field_name, max_len), None, None),
+            OctetStringCreationError::NotAscii(e) => PduParseError::new(PduParseErrorKind::COctetStringIsNotAscii, &format!("String value of {} is not ASCII (valid up to byte {}).", field_name, e.valid_up_to()), None, None),
+            OctetStringCreationError::OtherIoError(e) => PduParseError::from(e),
         }
     }
 }

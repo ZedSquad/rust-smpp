@@ -1,9 +1,9 @@
-use ascii::{AsciiStr, AsciiString};
+use ascii::{AsAsciiStrError, AsciiString, FromAsciiError};
+use core::fmt::{Display, Formatter};
+use std::error;
 use std::io;
 use std::io::{BufRead, Read};
 use tokio::io::{AsyncWrite, AsyncWriteExt};
-
-use crate::pdu::{PduParseError, PduParseErrorKind};
 
 // TODO: PDU Types, from spec section 3.1
 // COctetStringDecimal
@@ -67,6 +67,58 @@ impl Integer4 {
     }
 }
 
+#[derive(Debug)]
+pub enum OctetStringCreationError {
+    DoesNotEndWithZeroByte,
+    NotAscii(AsAsciiStrError),
+    TooLong(usize),
+    OtherIoError(io::Error),
+}
+
+impl Display for OctetStringCreationError {
+    fn fmt(
+        &self,
+        formatter: &mut Formatter,
+    ) -> std::result::Result<(), std::fmt::Error> {
+        let s = match self {
+            OctetStringCreationError::DoesNotEndWithZeroByte => String::from(
+                "C-Octet String does not end with the NULL character.",
+            ),
+            OctetStringCreationError::NotAscii(e) => format!(
+                "Octet String is not ASCII (valid up to byte {}).",
+                e.valid_up_to()
+            ),
+            OctetStringCreationError::TooLong(max_len) => {
+                format!("Octet String is too long.  Max length is {}", max_len)
+            }
+            OctetStringCreationError::OtherIoError(e) => {
+                format!("IO error creating Octet String: {}", e.to_string())
+            }
+        };
+        formatter.write_str(&s)
+    }
+}
+
+impl error::Error for OctetStringCreationError {}
+
+impl From<io::Error> for OctetStringCreationError {
+    fn from(e: io::Error) -> Self {
+        OctetStringCreationError::OtherIoError(e)
+    }
+}
+
+impl From<AsAsciiStrError> for OctetStringCreationError {
+    fn from(e: AsAsciiStrError) -> Self {
+        OctetStringCreationError::NotAscii(e)
+    }
+}
+
+impl<Orig> From<FromAsciiError<Orig>> for OctetStringCreationError {
+    fn from(e: FromAsciiError<Orig>) -> Self {
+        OctetStringCreationError::NotAscii(e.ascii_error())
+    }
+}
+
 /// https://smpp.org/SMPP_v3_4_Issue1_2.pdf section 3.1
 ///
 /// C-Octet String:
@@ -83,69 +135,44 @@ pub struct COctetString {
 // it.
 
 impl COctetString {
-    pub fn new(
-        value: &AsciiStr,
+    pub fn from_bytes(
+        value: &[u8],
         max_len: usize,
-    ) -> Result<Self, PduParseError> {
+    ) -> Result<Self, OctetStringCreationError> {
         if value.len() < max_len {
             Ok(Self {
-                value: AsciiString::from(value),
+                value: AsciiString::from_ascii(value)?,
             })
         } else {
-            Err(PduParseError::new(
-                    PduParseErrorKind::COctetStringTooLong,
-                    &format!(
-                        "String value is too long. Max length is {}, including final zero byte.",
-                        max_len
-                    ),
-                    None,
-                    None,
-                )
-            )
+            Err(OctetStringCreationError::TooLong(max_len))
         }
+    }
+    pub fn from_str(
+        value: &str,
+        max_len: usize,
+    ) -> Result<Self, OctetStringCreationError> {
+        Self::from_bytes(value.as_bytes(), max_len)
     }
 
     pub fn read(
         bytes: &mut dyn BufRead,
         max_len: usize,
-        field_name: &str,
-    ) -> Result<Self, PduParseError> {
+    ) -> Result<Self, OctetStringCreationError> {
         let mut buf = Vec::new();
         let num = bytes.take(max_len as u64).read_until(0x00, &mut buf)?;
 
         if buf.last() != Some(&0x00) {
             // Failed to read a NULL terminator before we ran out of characters
             if num == max_len {
-                return Err(
-                    PduParseError {
-                        kind: PduParseErrorKind::COctetStringTooLong,
-                        message: format!(
-                            "String value for {} is too long.  Max length is {}, including final zero byte.",
-                            field_name,
-                            max_len
-                        ),
-                        command_id: None,
-                        io_errorkind: None
-                    }
-                );
+                return Err(OctetStringCreationError::TooLong(max_len));
             } else {
-                return Err(PduParseError {
-                    kind: PduParseErrorKind::COctetStringDoesNotEndWithZeroByte,
-                    message: format!(
-                        "String value for {} did not end with a zero byte.",
-                        field_name
-                    ),
-                    command_id: None,
-                    io_errorkind: None,
-                });
+                return Err(OctetStringCreationError::DoesNotEndWithZeroByte);
             }
         }
 
         let buf = &buf[..(buf.len() - 1)]; // Remove trailing 0 byte
 
-        let asc = AsciiStr::from_ascii(buf)
-            .map_err(|e| PduParseError::from_asasciistrerror(e, field_name))?;
-        COctetString::new(asc, max_len)
+        COctetString::from_bytes(buf, max_len)
     }
 
     pub async fn write(&self, stream: &mut WriteStream) -> io::Result<()> {
@@ -210,9 +237,8 @@ mod tests {
     fn read_coctetstring() {
         let mut bytes = io::BufReader::new("foobar\0".as_bytes());
         assert_eq!(
-            COctetString::read(&mut bytes, 20, "test_field").unwrap(),
-            COctetString::new(AsciiStr::from_ascii("foobar").unwrap(), 20)
-                .unwrap()
+            COctetString::read(&mut bytes, 20).unwrap(),
+            COctetString::from_str("foobar", 20).unwrap()
         );
     }
 
@@ -220,77 +246,55 @@ mod tests {
     fn read_coctetstring_max_length() {
         let mut bytes = io::BufReader::new("thisislong\0".as_bytes());
         assert_eq!(
-            COctetString::read(&mut bytes, 11, "test_field").unwrap(),
-            COctetString::new(AsciiStr::from_ascii("thisislong").unwrap(), 11)
-                .unwrap()
+            COctetString::read(&mut bytes, 11).unwrap(),
+            COctetString::from_str("thisislong", 11).unwrap()
         );
     }
 
     #[test]
     fn read_error_coctetstring() {
         let mut failing_read = FailingRead::new_bufreader();
-        let res = COctetString::read(&mut failing_read, 20, "tst").unwrap_err();
+        let res = COctetString::read(&mut failing_read, 20).unwrap_err();
         assert_eq!(
-            res,
-            PduParseError::new(
-                PduParseErrorKind::OtherIoError,
-                "Invalid argument (os error 22)",
-                None,
-                Some(io::ErrorKind::InvalidInput),
-            )
+            res.to_string(),
+            "IO error creating Octet String: Invalid argument (os error 22)",
         );
     }
 
     #[test]
     fn read_coctetstring_missing_zero_byte() {
         let mut bytes = io::BufReader::new("foobar".as_bytes());
-        let res = COctetString::read(&mut bytes, 20, "test_field").unwrap_err();
+        let res = COctetString::read(&mut bytes, 20).unwrap_err();
         assert_eq!(
-            res,
-            PduParseError::new(
-                PduParseErrorKind::COctetStringDoesNotEndWithZeroByte,
-                "String value for test_field did not end with a zero byte.",
-                None,
-                None
-            )
+            res.to_string(),
+            "C-Octet String does not end with the NULL character."
         );
     }
 
     #[test]
     fn read_coctetstring_too_long() {
         let mut bytes = io::BufReader::new("foobar\0".as_bytes());
-        let res = COctetString::read(&mut bytes, 3, "test_field").unwrap_err();
+        let res = COctetString::read(&mut bytes, 3).unwrap_err();
         assert_eq!(
-            res,
-            PduParseError::new(
-                PduParseErrorKind::COctetStringTooLong,
-                "String value for test_field is too long.  Max length is 3, including final zero byte.",
-                None,
-                None
-            )
+            res.to_string(),
+            "Octet String is too long.  Max length is 3"
         );
     }
 
     #[test]
     fn read_coctetstring_zero_not_included_in_length() {
         let mut bytes = io::BufReader::new("foobar\0".as_bytes());
-        let res = COctetString::read(&mut bytes, 6, "test_field").unwrap_err();
+        let res = COctetString::read(&mut bytes, 6).unwrap_err();
         assert_eq!(
-            res,
-            PduParseError::new(
-                PduParseErrorKind::COctetStringTooLong,
-                "String value for test_field is too long.  Max length is 6, including final zero byte.",
-                None,
-                None
-            )
+            res.to_string(),
+            "Octet String is too long.  Max length is 6"
         );
     }
 
     #[tokio::test]
     async fn write_coctetstring() {
         let mut buf: Vec<u8> = Vec::new();
-        let val = COctetString::new(AsciiStr::from_ascii("abc").unwrap(), 16)
-            .unwrap();
+        let val = COctetString::from_str("abc", 16).unwrap();
         val.write(&mut buf).await.unwrap();
         assert_eq!(buf, vec!['a' as u8, 'b' as u8, 'c' as u8, 0x00]);
     }
