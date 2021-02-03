@@ -255,40 +255,31 @@ mod tests {
     fn read_error_coctetstring() {
         let mut failing_read = FailingRead::new_bufreader();
         let res = COctetString::read(&mut failing_read, 20).unwrap_err();
-        assert_eq!(
-            res.to_string(),
-            "IO error creating Octet String: Invalid argument (os error 22)",
-        );
+        assert!(matches!(res, OctetStringCreationError::OtherIoError(_)));
     }
 
     #[test]
     fn read_coctetstring_missing_zero_byte() {
         let mut bytes = io::BufReader::new("foobar".as_bytes());
         let res = COctetString::read(&mut bytes, 20).unwrap_err();
-        assert_eq!(
-            res.to_string(),
-            "C-Octet String does not end with the NULL character."
-        );
+        assert!(matches!(
+            res,
+            OctetStringCreationError::DoesNotEndWithZeroByte
+        ));
     }
 
     #[test]
     fn read_coctetstring_too_long() {
         let mut bytes = io::BufReader::new("foobar\0".as_bytes());
         let res = COctetString::read(&mut bytes, 3).unwrap_err();
-        assert_eq!(
-            res.to_string(),
-            "Octet String is too long.  Max length is 3"
-        );
+        assert!(matches!(res, OctetStringCreationError::TooLong(3)));
     }
 
     #[test]
     fn read_coctetstring_zero_not_included_in_length() {
         let mut bytes = io::BufReader::new("foobar\0".as_bytes());
         let res = COctetString::read(&mut bytes, 6).unwrap_err();
-        assert_eq!(
-            res.to_string(),
-            "Octet String is too long.  Max length is 6"
-        );
+        assert!(matches!(res, OctetStringCreationError::TooLong(6)));
     }
 
     #[tokio::test]
