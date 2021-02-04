@@ -226,7 +226,7 @@ impl SmppConnection {
                 if self.buffer.is_empty() {
                     return Ok(None);
                 } else {
-                    // TODO: make a separate error type
+                    // It might be better here to create a separate error type
                     return Err(PduParseError::for_ioerror(
                         io::ErrorKind::ConnectionReset.into(),
                     ));
