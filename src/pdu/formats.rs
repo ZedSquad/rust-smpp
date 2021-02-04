@@ -89,7 +89,11 @@ impl Display for OctetStringCreationError {
                 e.valid_up_to()
             ),
             OctetStringCreationError::TooLong(max_len) => {
-                format!("Octet String is too long.  Max length is {}", max_len)
+                format!(
+                    "Octet String is too long.  \
+                    Max length is {}, including final zero byte.",
+                    max_len
+                )
             }
             OctetStringCreationError::OtherIoError(e) => {
                 format!("IO error creating Octet String: {}", e.to_string())

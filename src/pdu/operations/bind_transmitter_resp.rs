@@ -1,6 +1,8 @@
 use std::io;
 
-use crate::pdu::formats::{COctetString, Integer4, WriteStream};
+use crate::pdu::formats::{
+    COctetString, Integer4, OctetStringCreationError, WriteStream,
+};
 use crate::pdu::PduParseError;
 
 const BIND_TRANSMITTER_RESP: u32 = 0x80000002;
@@ -25,6 +27,13 @@ pub struct BindTransmitterRespPdu {
     body: Option<Body>,
 }
 
+fn map_e(
+    res: Result<COctetString, OctetStringCreationError>,
+    field_name: &str,
+) -> Result<COctetString, PduParseError> {
+    res.map_err(|e| PduParseError::from(e).into_with_field_name(field_name))
+}
+
 impl BindTransmitterRespPdu {
     pub fn new(
         sequence_number: u32,
@@ -33,13 +42,10 @@ impl BindTransmitterRespPdu {
         Ok(Self {
             sequence_number: Integer4::new(sequence_number),
             body: Some(Body {
-                system_id: COctetString::from_str(
-                    system_id,
-                    MAX_LENGTH_SYSTEM_ID,
-                )
-                .map_err(|e| {
-                    PduParseError::from_octetstringcreationerror(e, "system_id")
-                })?,
+                system_id: map_e(
+                    COctetString::from_str(system_id, MAX_LENGTH_SYSTEM_ID),
+                    "system_id",
+                )?,
             }),
         })
     }
@@ -86,13 +92,10 @@ impl BindTransmitterRespPdu {
 
         let body = if command_status.value == 0 {
             Some(Body {
-                system_id: COctetString::read(bytes, MAX_LENGTH_SYSTEM_ID)
-                    .map_err(|e| {
-                        PduParseError::from_octetstringcreationerror(
-                            e,
-                            "system_id",
-                        )
-                    })?,
+                system_id: map_e(
+                    COctetString::read(bytes, MAX_LENGTH_SYSTEM_ID),
+                    "system_id",
+                )?,
             })
         } else {
             None

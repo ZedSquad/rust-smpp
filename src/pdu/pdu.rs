@@ -6,7 +6,7 @@ use crate::pdu::formats::{Integer4, WriteStream};
 use crate::pdu::validate_command_length::validate_command_length;
 use crate::pdu::{
     check, BindTransmitterPdu, BindTransmitterRespPdu, CheckError,
-    CheckOutcome, GenericNackPdu, PduParseError, PduParseErrorKind,
+    CheckOutcome, GenericNackPdu, PduParseError,
 };
 
 #[derive(Debug, PartialEq)]
@@ -30,39 +30,26 @@ impl Pdu {
                 .map(|p| Pdu::BindTransmitter(p)),
             0x80000002 => BindTransmitterRespPdu::parse(&mut bytes)
                 .map(|p| Pdu::BindTransmitterResp(p)),
-            _ => Err(PduParseError {
-                kind: PduParseErrorKind::UnknownCommandId,
-                message: format!("Unknown command id: {}", command_id.value),
-                command_id: Some(command_id.value),
-                io_errorkind: None,
-            }),
+            _ => Err(PduParseError::for_unknown_command_id(command_id.value)),
         }
-        .map_err(|mut e| {
-            e.command_id = Some(command_id.value);
-            e
-        }).and_then(|ret| {
+        .map_err(|e| e.into_with_command_id(command_id.value))
+        .and_then(|ret| {
             // There should be no bytes left over
             let mut buf = [0; 1];
             if bytes.read(&mut buf)? == 0 {
                 Ok(ret)
             } else {
-                Err(PduParseError {
-                    kind: PduParseErrorKind::LengthLongerThanPdu,
-                    message: format!(
-                        "Finished parsing PDU with command_id: {} but its length suggested it was longer.",
-                        command_id.value
-                    ),
-                    command_id: Some(command_id.value),
-                    io_errorkind: None,
-                })
+                Err(PduParseError::for_lengthlongerthanpdu(
+                    command_id.value,
+                    command_length.value,
+                ))
                 // Note: Ideally, the sequence number in the response would
                 // match the one supplied, but currently we don't include that.
                 // This seems OK since really PDU does not parse correctly, but
                 // it would be even better if we parsed the header and used that
                 // to shape our error responses.
             }
-        }
-        )
+        })
     }
 
     pub fn check(
@@ -136,13 +123,10 @@ mod tests {
 
         let res = Pdu::parse(&mut cursor).unwrap_err();
         assert_eq!(
-            res,
-            PduParseError::new(
-                PduParseErrorKind::COctetStringTooLong,
-                "String value for system_id is too long.  Max length is 16, including final zero byte.",
-                Some(0x00000002),
-                None,
-            )
+            res.to_string(),
+            "Error parsing PDU (command_id=0x00000002, field_name=system_id): \
+            Octet String is too long.  Max length is 16, including final \
+            zero byte.",
         );
     }
 
@@ -154,13 +138,9 @@ mod tests {
 
         let res = Pdu::parse(&mut cursor).unwrap_err();
         assert_eq!(
-            res,
-            PduParseError::new(
-                PduParseErrorKind::COctetStringDoesNotEndWithZeroByte,
-                "String value for system_id did not end with a zero byte.",
-                Some(0x00000002),
-                None,
-            )
+            res.to_string(),
+            "Error parsing PDU (command_id=0x00000002, field_name=system_id): \
+            C-Octet String does not end with the NULL character.",
         );
     }
 
@@ -172,13 +152,10 @@ mod tests {
 
         let res = Pdu::parse(&mut cursor).unwrap_err();
         assert_eq!(
-            res,
-            PduParseError::new(
-                PduParseErrorKind::NotEnoughBytes,
-                "Reached end of PDU length (or end of input) before finding all fields of the PDU.",
-                Some(0x00000002),
-                Some(io::ErrorKind::UnexpectedEof)
-            )
+            res.to_string(),
+            "Error parsing PDU (command_id=0x00000002, field_name=UNKNOWN): \
+            Reached end of PDU length (or end of input) before finding all \
+            fields of the PDU.",
         );
     }
 
@@ -190,13 +167,10 @@ mod tests {
 
         let res = Pdu::parse(&mut cursor).unwrap_err();
         assert_eq!(
-            res,
-            PduParseError::new(
-                PduParseErrorKind::NotEnoughBytes,
-                "Reached end of PDU length (or end of input) before finding all fields of the PDU.",
-                Some(0x00000002),
-                Some(io::ErrorKind::UnexpectedEof)
-            )
+            res.to_string(),
+            "Error parsing PDU (command_id=0x00000002, field_name=UNKNOWN): \
+            Reached end of PDU length (or end of input) before finding all \
+            fields of the PDU.",
         );
     }
 
@@ -207,13 +181,9 @@ mod tests {
 
         let res = Pdu::parse(&mut cursor).unwrap_err();
         assert_eq!(
-            res,
-            PduParseError::new(
-                PduParseErrorKind::LengthTooShort,
-                "PDU too short!  Length: 4, min allowed: 8.",
-                None,
-                None
-            )
+            res.to_string(),
+            "Error parsing PDU (command_id=UNKNOWN, field_name=UNKNOWN): \
+            Length (4) too short.  Min allowed is 8 octets.",
         );
     }
 
@@ -225,13 +195,9 @@ mod tests {
 
         let res = Pdu::parse(&mut cursor).unwrap_err();
         assert_eq!(
-            res,
-            PduParseError::new(
-                PduParseErrorKind::LengthTooLong,
-                "PDU too long!  Length: 4294967295, max allowed: 70000.",
-                None,
-                None
-            )
+            res.to_string(),
+            "Error parsing PDU (command_id=UNKNOWN, field_name=UNKNOWN): \
+            Length (4294967295) too long.  Max allowed is 70000 octets.",
         );
     }
 
@@ -243,13 +209,9 @@ mod tests {
 
         let res = Pdu::parse(&mut cursor).unwrap_err();
         assert_eq!(
-            res,
-            PduParseError::new(
-                PduParseErrorKind::COctetStringIsNotAscii,
-                "String value of system_id is not ASCII (valid up to byte 3).",
-                Some(0x00000002),
-                None,
-            )
+            res.to_string(),
+            "Error parsing PDU (command_id=0x00000002, field_name=system_id): \
+            Octet String is not ASCII (valid up to byte 3).",
         );
     }
 
@@ -261,13 +223,9 @@ mod tests {
 
         let res = Pdu::parse(&mut cursor).unwrap_err();
         assert_eq!(
-            res,
-            PduParseError::new(
-                PduParseErrorKind::StatusIsNotZero,
-                "command_status must be 0, but was 119",
-                Some(0x00000002),
-                None,
-            )
+            res.to_string(),
+            "Error parsing PDU (command_id=0x00000002, field_name=UNKNOWN): \
+            command_status must be 0, but was 119.",
         );
     }
 

@@ -13,7 +13,6 @@ use tokio::sync::{Semaphore, TryAcquireError};
 use crate::async_result::AsyncResult;
 use crate::pdu::{
     BindTransmitterRespPdu, CheckOutcome, GenericNackPdu, Pdu, PduParseError,
-    PduParseErrorKind,
 };
 use crate::smsc_config::SmscConfig;
 
@@ -227,11 +226,9 @@ impl SmppConnection {
                 if self.buffer.is_empty() {
                     return Ok(None);
                 } else {
-                    return Err(PduParseError::new(
-                        PduParseErrorKind::OtherIoError,
-                        "Connection closed by peer.",
-                        None,
-                        None,
+                    // TODO: make a separate error type
+                    return Err(PduParseError::for_ioerror(
+                        io::ErrorKind::ConnectionReset.into(),
                     ));
                 }
             }
@@ -256,12 +253,7 @@ impl SmppConnection {
             // Try again when we have more
             Ok(CheckOutcome::Incomplete) => Ok(None),
             // Failed (e.g. too long)
-            Err(e) => Err(PduParseError::new(
-                PduParseErrorKind::OtherIoError,
-                &e.message,
-                None,
-                e.io_errorkind,
-            )),
+            Err(e) => Err(e.into()),
             // Issue#1: it would be good to respond with a specific error here,
             // instead of generic_nack.  That should be possible in some cases
             // if we can read the PDU header before we reject it.  It's not

@@ -1,35 +1,23 @@
-use core::fmt::Formatter;
 use std::convert::TryFrom;
-use std::error;
-use std::fmt::Display;
 use std::io;
 
 use crate::pdu::formats::Integer4;
-use crate::pdu::validate_command_length::validate_command_length;
+use crate::pdu::validate_command_length::{
+    validate_command_length, CommandLengthError,
+};
 
-#[derive(Debug, PartialEq)]
-pub struct CheckError {
-    pub message: String,
-    pub io_errorkind: Option<io::ErrorKind>,
+#[derive(Debug)]
+pub enum CheckError {
+    CommandLengthError(CommandLengthError),
+    IoError(io::Error),
 }
 
-impl Display for CheckError {
-    fn fmt(
-        &self,
-        formatter: &mut Formatter,
-    ) -> std::result::Result<(), std::fmt::Error> {
-        if let Some(ek) = self.io_errorkind {
-            formatter.write_fmt(format_args!(
-                "Error checking PDU length: {}.  io::ErrorKind={:?}",
-                self.message, ek
-            ))
-        } else {
-            formatter.write_str(&self.message)
-        }
+// TODO: use these, and more ? below.
+/*impl From<CommandLengthError> for CheckError {
+    fn from(e: CommandLengthError) -> Self {
+        CheckError::CommandLengthError(e)
     }
-}
-
-impl error::Error for CheckError {}
+}*/
 
 #[derive(Debug, PartialEq)]
 pub enum CheckOutcome {
@@ -42,12 +30,7 @@ pub fn check(bytes: &mut dyn io::BufRead) -> Result<CheckOutcome, CheckError> {
         .map(|len| {
             match validate_command_length(&len) {
                 Ok(()) => (),
-                Err(e) => {
-                    return Err(CheckError {
-                        message: e.message,
-                        io_errorkind: None,
-                    });
-                }
+                Err(e) => return Err(CheckError::CommandLengthError(e)),
             }
             check_can_read(bytes, len.value)
         })
@@ -59,10 +42,7 @@ fn result_from_io_error(
 ) -> Result<CheckOutcome, CheckError> {
     match io_error.kind() {
         io::ErrorKind::UnexpectedEof => Ok(CheckOutcome::Incomplete),
-        _ => Err(CheckError {
-            message: io_error.to_string(),
-            io_errorkind: Some(io_error.kind()),
-        }),
+        _ => Err(CheckError::IoError(io_error)),
     }
 }
 
@@ -70,9 +50,10 @@ fn check_can_read(
     bytes: &mut dyn io::BufRead,
     command_length: u32,
 ) -> Result<CheckOutcome, CheckError> {
-    let len = usize::try_from(command_length - 4).map_err(|_| CheckError {
-        message: String::from("Invalid command length."),
-        io_errorkind: None,
+    let len = usize::try_from(command_length - 4).map_err(|_| {
+        CheckError::CommandLengthError(CommandLengthError::TooShort(
+            command_length,
+        ))
     })?;
     // Is there a better way than allocating this vector?
     let mut buf = Vec::with_capacity(len);
@@ -96,33 +77,30 @@ mod tests {
     #[test]
     fn check_is_ok_if_more_bytes() {
         let mut cursor = Cursor::new(&BIND_TRANSMITTER_RESP_PDU_PLUS_EXTRA[..]);
-        assert_eq!(check(&mut cursor), Ok(CheckOutcome::Ready));
+        assert_eq!(check(&mut cursor).unwrap(), CheckOutcome::Ready);
     }
 
     #[test]
     fn check_is_ok_if_exact_bytes() {
         let mut cursor =
             Cursor::new(&BIND_TRANSMITTER_RESP_PDU_PLUS_EXTRA[..0x1b]);
-        assert_eq!(check(&mut cursor), Ok(CheckOutcome::Ready));
+        assert_eq!(check(&mut cursor).unwrap(), CheckOutcome::Ready);
     }
 
     #[test]
     fn check_is_incomplete_if_fewer_bytes() {
         let mut cursor =
             Cursor::new(&BIND_TRANSMITTER_RESP_PDU_PLUS_EXTRA[..0x1a]);
-        assert_eq!(check(&mut cursor), Ok(CheckOutcome::Incomplete));
+        assert_eq!(check(&mut cursor).unwrap(), CheckOutcome::Incomplete);
     }
 
     #[test]
     fn check_errors_if_read_error() {
         let mut failing_read = FailingRead::new_bufreader();
-        assert_eq!(
-            check(&mut failing_read),
-            Err(CheckError {
-                message: String::from("Invalid argument (os error 22)"),
-                io_errorkind: Some(io::ErrorKind::InvalidInput)
-            })
-        );
+        assert!(matches!(
+            check(&mut failing_read).unwrap_err(),
+            CheckError::IoError(_)
+        ));
     }
 
     #[test]
@@ -131,10 +109,10 @@ mod tests {
         let mut cursor = Cursor::new(&PDU);
 
         let res = check(&mut cursor).unwrap_err();
-        assert_eq!(
-            res.to_string(),
-            "PDU too short!  Length: 4, min allowed: 8."
-        );
+        assert!(matches!(
+            res,
+            CheckError::CommandLengthError(CommandLengthError::TooShort(4))
+        ));
     }
 
     #[test]
@@ -144,9 +122,11 @@ mod tests {
         let mut cursor = Cursor::new(&PDU);
 
         let res = check(&mut cursor).unwrap_err();
-        assert_eq!(
-            res.to_string(),
-            "PDU too long!  Length: 4294967295, max allowed: 70000."
-        );
+        assert!(matches!(
+            res,
+            CheckError::CommandLengthError(CommandLengthError::TooLong(
+                4294967295
+            ))
+        ));
     }
 }

@@ -3,7 +3,7 @@ use std::io;
 use crate::pdu::formats::{
     COctetString, Integer1, Integer4, OctetStringCreationError, WriteStream,
 };
-use crate::pdu::{PduParseError, PduParseErrorKind};
+use crate::pdu::PduParseError;
 
 const MAX_LENGTH_SYSTEM_ID: usize = 16;
 const MAX_LENGTH_PASSWORD: usize = 9;
@@ -26,7 +26,7 @@ fn map_e(
     res: Result<COctetString, OctetStringCreationError>,
     field_name: &str,
 ) -> Result<COctetString, PduParseError> {
-    res.map_err(|e| PduParseError::from_octetstringcreationerror(e, field_name))
+    res.map_err(|e| PduParseError::from(e).into_with_field_name(field_name))
 }
 
 impl BindTransmitterPdu {
@@ -92,15 +92,9 @@ impl BindTransmitterPdu {
         )?;
 
         if command_status.value != 0x00 {
-            return Err(PduParseError {
-                kind: PduParseErrorKind::StatusIsNotZero,
-                message: format!(
-                    "command_status must be 0, but was {}",
-                    command_status.value
-                ),
-                command_id: None,
-                io_errorkind: None,
-            });
+            return Err(PduParseError::for_statusisnotzero(
+                command_status.value,
+            ));
         }
 
         Ok(BindTransmitterPdu {
