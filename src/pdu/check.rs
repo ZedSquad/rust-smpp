@@ -12,12 +12,22 @@ pub enum CheckError {
     IoError(io::Error),
 }
 
-// TODO: use these, and more ? below.
-/*impl From<CommandLengthError> for CheckError {
+impl From<CommandLengthError> for CheckError {
     fn from(e: CommandLengthError) -> Self {
         CheckError::CommandLengthError(e)
     }
-}*/
+}
+
+/// Note: if you have an io::Error that is an UnexpectedEof, then
+/// CheckError is not the right response.  You should instead return
+/// a CheckOutcome::Incomplete.  So after converting to a CheckError
+/// you must perform an additional step to remap into the right
+/// response.
+impl From<io::Error> for CheckError {
+    fn from(e: io::Error) -> Self {
+        CheckError::IoError(e)
+    }
+}
 
 #[derive(Debug, PartialEq)]
 pub enum CheckOutcome {
@@ -26,42 +36,31 @@ pub enum CheckOutcome {
 }
 
 pub fn check(bytes: &mut dyn io::BufRead) -> Result<CheckOutcome, CheckError> {
-    Integer4::read(bytes)
-        .map(|len| {
-            match validate_command_length(&len) {
-                Ok(()) => (),
-                Err(e) => return Err(CheckError::CommandLengthError(e)),
-            }
-            check_can_read(bytes, len.value)
-        })
-        .unwrap_or_else(result_from_io_error)
-}
-
-fn result_from_io_error(
-    io_error: io::Error,
-) -> Result<CheckOutcome, CheckError> {
-    match io_error.kind() {
-        io::ErrorKind::UnexpectedEof => Ok(CheckOutcome::Incomplete),
-        _ => Err(CheckError::IoError(io_error)),
+    match check_can_read(bytes) {
+        Err(CheckError::IoError(e)) => match e.kind() {
+            io::ErrorKind::UnexpectedEof => Ok(CheckOutcome::Incomplete),
+            _ => Err(CheckError::IoError(e)),
+        },
+        Ok(()) => Ok(CheckOutcome::Ready),
+        Err(e) => Err(e),
     }
 }
 
-fn check_can_read(
-    bytes: &mut dyn io::BufRead,
-    command_length: u32,
-) -> Result<CheckOutcome, CheckError> {
-    let len = usize::try_from(command_length - 4).map_err(|_| {
+/// Note: this returns a CheckError even if we got UnexpectedEof.  This must
+/// be mapped through the logic in check() before we return it to our caller.
+fn check_can_read(bytes: &mut dyn io::BufRead) -> Result<(), CheckError> {
+    let command_length = Integer4::read(bytes)?;
+    validate_command_length(&command_length)?;
+
+    let len = usize::try_from(command_length.value - 4).map_err(|_| {
         CheckError::CommandLengthError(CommandLengthError::TooShort(
-            command_length,
+            command_length.value,
         ))
     })?;
     // Is there a better way than allocating this vector?
     let mut buf = Vec::with_capacity(len);
     buf.resize(len, 0);
-    bytes
-        .read_exact(buf.as_mut_slice())
-        .map(|_| CheckOutcome::Ready)
-        .or_else(result_from_io_error)
+    Ok(bytes.read_exact(buf.as_mut_slice())?)
 }
 
 #[cfg(test)]
