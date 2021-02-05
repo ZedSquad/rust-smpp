@@ -247,6 +247,7 @@ fn when_receive_pdu_with_short_length_but_long_string_we_respond_with_error() {
 // TODO: receive MT (pluggable handler)
 // TODO: return DR
 // TODO: return MO
+// TODO: fix flakiness - sometimes we get Connection Refused when running this.
 // Later: client app + system test that allows us to compare with CloudHopper
 // Later: different bind types
 // Later: all PDU types and formats
