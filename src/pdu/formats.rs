@@ -189,6 +189,64 @@ impl COctetString {
     }
 }
 
+/// https://smpp.org/SMPP_v3_4_Issue1_2.pdf section 3.1
+///
+/// Octet String:
+/// A series of octets, not necessarily NULL terminated.
+#[derive(Clone, Debug, PartialEq)]
+pub struct OctetString {
+    pub value: Vec<u8>,
+}
+
+impl OctetString {
+    pub fn new(
+        value: Vec<u8>,
+        max_len: usize,
+    ) -> Result<Self, OctetStringCreationError> {
+        if value.len() < max_len {
+            Ok(Self { value })
+        } else {
+            Err(OctetStringCreationError::TooLong(max_len))
+        }
+    }
+
+    pub fn from_bytes(
+        value: &[u8],
+        max_len: usize,
+    ) -> Result<Self, OctetStringCreationError> {
+        if value.len() < max_len {
+            let mut v = Vec::with_capacity(value.len());
+            v.extend_from_slice(value);
+            Ok(Self { value: v })
+        } else {
+            Err(OctetStringCreationError::TooLong(max_len))
+        }
+    }
+
+    pub fn read(
+        bytes: &mut dyn BufRead,
+        length: usize,
+        max_len: usize,
+    ) -> Result<Self, OctetStringCreationError> {
+        if length > max_len {
+            return Err(OctetStringCreationError::TooLong(length));
+        }
+
+        let mut buf = Vec::with_capacity(length);
+        buf.resize(length, 0x00);
+        bytes.read_exact(buf.as_mut_slice())?;
+        OctetString::new(buf, max_len)
+    }
+
+    pub async fn write(&self, stream: &mut WriteStream) -> io::Result<()> {
+        stream.write_all(self.value.as_slice()).await
+    }
+
+    pub fn len(&self) -> usize {
+        self.value.len()
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -293,4 +351,15 @@ mod tests {
         val.write(&mut buf).await.unwrap();
         assert_eq!(buf, vec!['a' as u8, 'b' as u8, 'c' as u8, 0x00]);
     }
+
+    #[test]
+    fn read_octetstring() {
+        let mut bytes = io::BufReader::new("foobar\0".as_bytes());
+        assert_eq!(
+            OctetString::read(&mut bytes, 7, 20).unwrap(),
+            OctetString::from_bytes(b"foobar\0", 20).unwrap()
+        );
+    }
+
+    // TODO: more tests for OctetString, including write
 }

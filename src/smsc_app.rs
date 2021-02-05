@@ -16,6 +16,7 @@ use crate::pdu::{
 };
 use crate::smsc_config::SmscConfig;
 
+// TODO: status as listed at 5.1.3 on https://smpp.org/SMPP_v3_4_Issue1_2.pdf
 const ERROR_STATUS_FAILED_TO_PARSE_OTHER_PDU: u32 = 0x00010001;
 const ERROR_STATUS_PDU_HEADER_INVALID: u32 = 0x00010002;
 const ERROR_STATUS_UNEXPECTED_PDU_TYPE: u32 = 0x00010003;

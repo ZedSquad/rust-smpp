@@ -14,6 +14,7 @@ pub enum PduParseErrorBody {
     LengthLongerThanPdu(u32),
     LengthTooLong(u32),
     LengthTooShort(u32),
+    IncorrectLength(u32, String),
     NotEnoughBytes,
     OctetStringCreationError(OctetStringCreationError),
     OtherIoError(io::Error),
@@ -75,6 +76,18 @@ impl PduParseError {
             sequence_number: None,
             field_name: None,
             body: PduParseErrorBody::LengthTooShort(length),
+        }
+    }
+
+    pub fn for_incorrect_length(length: u32, message: &str) -> Self {
+        Self {
+            command_id: None,
+            sequence_number: None,
+            field_name: None,
+            body: PduParseErrorBody::IncorrectLength(
+                length,
+                String::from(message),
+            ),
         }
     }
 
@@ -170,14 +183,15 @@ impl Display for PduParseError {
         formatter: &mut Formatter,
     ) -> std::result::Result<(), std::fmt::Error> {
         let msg = match &self.body {
-            PduParseErrorBody::OtherIoError(e) => format!("IO error: {}", e.to_string()),
+            PduParseErrorBody::IncorrectLength(length, message) => format!("Length {} was incorrect: {}", length, message),
+            PduParseErrorBody::LengthLongerThanPdu(length) => format!("Finished parsing PDU but its length ({}) suggested it was longer.", length),
             PduParseErrorBody::LengthTooLong(length) => format!("Length ({}) too long.  Max allowed is {} octets.", length, MAX_PDU_LENGTH),
             PduParseErrorBody::LengthTooShort(length) => format!("Length ({}) too short.  Min allowed is {} octets.", length, MIN_PDU_LENGTH),
             PduParseErrorBody::NotEnoughBytes => String::from("Reached end of PDU length (or end of input) before finding all fields of the PDU."),
+            PduParseErrorBody::OctetStringCreationError(e) => e.to_string(),
+            PduParseErrorBody::OtherIoError(e) => format!("IO error: {}", e.to_string()),
             PduParseErrorBody::StatusIsNotZero(status) => format!("command_status must be 0, but was {}.", status),
             PduParseErrorBody::UnknownCommandId => String::from("Supplied command_id is unknown."),
-            PduParseErrorBody::OctetStringCreationError(e) => e.to_string(),
-            PduParseErrorBody::LengthLongerThanPdu(length) => format!("Finished parsing PDU but its length ({}) suggested it was longer.", length)
         };
 
         formatter.write_fmt(format_args!(
@@ -192,6 +206,17 @@ impl Display for PduParseError {
 }
 
 impl error::Error for PduParseError {}
+
+/// If the supplied result is an error, enrich it with the supplied field name
+pub fn fld<T, E>(
+    field_name: &str,
+    res: Result<T, E>,
+) -> Result<T, PduParseError>
+where
+    E: Into<PduParseError>,
+{
+    res.map_err(|e| e.into().into_with_field_name(field_name))
+}
 
 #[cfg(test)]
 mod tests {

@@ -10,6 +10,7 @@ pub use formats::OctetStringCreationError;
 pub use operations::bind_transmitter::BindTransmitterPdu;
 pub use operations::bind_transmitter_resp::BindTransmitterRespPdu;
 pub use operations::generic_nack::GenericNackPdu;
+pub use operations::submit_sm::SubmitSmPdu;
 pub use pdu::Pdu;
 pub use pduparseerror::PduParseError;
 pub use validate_command_length::{

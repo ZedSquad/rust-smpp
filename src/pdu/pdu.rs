@@ -6,7 +6,7 @@ use crate::pdu::formats::{Integer4, WriteStream};
 use crate::pdu::validate_command_length::validate_command_length;
 use crate::pdu::{
     check, BindTransmitterPdu, BindTransmitterRespPdu, CheckError,
-    CheckOutcome, GenericNackPdu, PduParseError,
+    CheckOutcome, GenericNackPdu, PduParseError, SubmitSmPdu,
 };
 
 #[derive(Debug, PartialEq)]
@@ -14,6 +14,7 @@ pub enum Pdu {
     BindTransmitter(BindTransmitterPdu),
     BindTransmitterResp(BindTransmitterRespPdu),
     GenericNack(GenericNackPdu),
+    SubmitSm(SubmitSmPdu),
 }
 
 impl Pdu {
@@ -25,31 +26,25 @@ impl Pdu {
             bytes.take(u64::try_from(command_length.value - 4).unwrap_or(0));
         let command_id = Integer4::read(&mut bytes)?;
 
-        match command_id.value {
-            0x00000002 => BindTransmitterPdu::parse(&mut bytes)
-                .map(|p| Pdu::BindTransmitter(p)),
-            0x80000002 => BindTransmitterRespPdu::parse(&mut bytes)
-                .map(|p| Pdu::BindTransmitterResp(p)),
-            _ => Err(PduParseError::for_unknown_command_id(command_id.value)),
-        }
-        .map_err(|e| e.into_with_command_id(command_id.value))
-        .and_then(|ret| {
-            // There should be no bytes left over
-            let mut buf = [0; 1];
-            if bytes.read(&mut buf)? == 0 {
-                Ok(ret)
-            } else {
-                Err(PduParseError::for_lengthlongerthanpdu(
-                    command_id.value,
-                    command_length.value,
-                ))
-                // Note: Ideally, the sequence number in the response would
-                // match the one supplied, but currently we don't include that.
-                // This seems OK since really PDU does not parse correctly, but
-                // it would be even better if we parsed the header and used that
-                // to shape our error responses.
-            }
-        })
+        call_parse(command_id.value, &mut bytes)
+            .map_err(|e| e.into_with_command_id(command_id.value))
+            .and_then(|ret| {
+                // There should be no bytes left over
+                let mut buf = [0; 1];
+                if bytes.read(&mut buf)? == 0 {
+                    Ok(ret)
+                } else {
+                    Err(PduParseError::for_lengthlongerthanpdu(
+                        command_id.value,
+                        command_length.value,
+                    ))
+                    // Note: Ideally, the sequence number in the response would
+                    // match the one supplied, but currently we don't include that.
+                    // This seems OK since really PDU does not parse correctly, but
+                    // it would be even better if we parsed the header and used that
+                    // to shape our error responses.
+                }
+            })
     }
 
     pub fn check(
@@ -63,7 +58,23 @@ impl Pdu {
             Pdu::BindTransmitter(pdu) => pdu.write(stream).await,
             Pdu::BindTransmitterResp(pdu) => pdu.write(stream).await,
             Pdu::GenericNack(pdu) => pdu.write(stream).await,
+            Pdu::SubmitSm(pdu) => pdu.write(stream).await,
         }
+    }
+}
+
+pub fn call_parse(
+    command_id: u32,
+    bytes: &mut dyn io::BufRead,
+) -> Result<Pdu, PduParseError> {
+    match command_id {
+        0x00000002 => {
+            BindTransmitterPdu::parse(bytes).map(|p| Pdu::BindTransmitter(p))
+        }
+        0x00000004 => SubmitSmPdu::parse(bytes).map(|p| Pdu::SubmitSm(p)),
+        0x80000002 => BindTransmitterRespPdu::parse(bytes)
+            .map(|p| Pdu::BindTransmitterResp(p)),
+        _ => Err(PduParseError::for_unknown_command_id(command_id)),
     }
 }
 
@@ -153,7 +164,8 @@ mod tests {
         let res = Pdu::parse(&mut cursor).unwrap_err();
         assert_eq!(
             res.to_string(),
-            "Error parsing PDU (command_id=0x00000002, field_name=UNKNOWN): \
+            "Error parsing PDU (command_id=0x00000002, \
+            field_name=interface_version): \
             Reached end of PDU length (or end of input) before finding all \
             fields of the PDU.",
         );
@@ -168,7 +180,8 @@ mod tests {
         let res = Pdu::parse(&mut cursor).unwrap_err();
         assert_eq!(
             res.to_string(),
-            "Error parsing PDU (command_id=0x00000002, field_name=UNKNOWN): \
+            "Error parsing PDU (command_id=0x00000002, \
+            field_name=command_status): \
             Reached end of PDU length (or end of input) before finding all \
             fields of the PDU.",
         );
@@ -224,7 +237,8 @@ mod tests {
         let res = Pdu::parse(&mut cursor).unwrap_err();
         assert_eq!(
             res.to_string(),
-            "Error parsing PDU (command_id=0x00000002, field_name=UNKNOWN): \
+            "Error parsing PDU (command_id=0x00000002, \
+            field_name=command_status): \
             command_status must be 0, but was 119.",
         );
     }
@@ -239,4 +253,49 @@ mod tests {
             )
         );
     }
+
+    #[test]
+    fn parse_valid_submit_sm_with_short_message_and_no_tlvs() {
+        const PDU: &[u8; 0x3d] = b"\
+            \x00\x00\x00\x3d\
+            \x00\x00\x00\x04\
+            \x00\x00\x00\x00\
+            \x00\x00\x00\x03\
+            \x00\
+            \x00\x00447000123123\x00\
+            \x00\x00447111222222\x00\
+            \x00\x01\x01\x00\x00\x01\x00\x03\
+            \x00\x04hihi";
+
+        let mut cursor = Cursor::new(&PDU[..]);
+        assert_eq!(
+            Pdu::parse(&mut cursor).unwrap(),
+            Pdu::SubmitSm(
+                SubmitSmPdu::new(
+                    0x00000003,
+                    "",
+                    0x00,
+                    0x00,
+                    "447000123123",
+                    0x00,
+                    0x00,
+                    "447111222222",
+                    0x00,
+                    0x01,
+                    0x01,
+                    "",
+                    "",
+                    0x01,
+                    0x00,
+                    0x03,
+                    0x00,
+                    0x04,
+                    b"hihi"
+                )
+                .unwrap()
+            )
+        );
+    }
+
+    // TODO: more tests for SubmitSm, including IncorrectLength
 }

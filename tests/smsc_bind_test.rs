@@ -242,3 +242,11 @@ fn when_receive_pdu_with_short_length_but_long_string_we_respond_with_error() {
         );
     })
 }
+
+// TODO: allow and disallow binding via username+password (pluggable validator)
+// TODO: receive MT (pluggable handler)
+// TODO: return DR
+// TODO: return MO
+// Later: client app + system test that allows us to compare with CloudHopper
+// Later: different bind types
+// Later: all PDU types and formats

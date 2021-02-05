@@ -1,8 +1,7 @@
 use std::io;
 
-use crate::pdu::formats::{
-    COctetString, Integer1, Integer4, OctetStringCreationError, WriteStream,
-};
+use crate::pdu::formats::{COctetString, Integer1, Integer4, WriteStream};
+use crate::pdu::pduparseerror::fld;
 use crate::pdu::PduParseError;
 
 const MAX_LENGTH_SYSTEM_ID: usize = 16;
@@ -22,13 +21,6 @@ pub struct BindTransmitterPdu {
     address_range: COctetString,
 }
 
-fn map_e(
-    res: Result<COctetString, OctetStringCreationError>,
-    field_name: &str,
-) -> Result<COctetString, PduParseError> {
-    res.map_err(|e| PduParseError::from(e).into_with_field_name(field_name))
-}
-
 impl BindTransmitterPdu {
     pub fn new(
         sequence_number: u32,
@@ -42,24 +34,24 @@ impl BindTransmitterPdu {
     ) -> Result<Self, PduParseError> {
         Ok(Self {
             sequence_number: Integer4::new(sequence_number),
-            system_id: map_e(
-                COctetString::from_str(system_id, MAX_LENGTH_SYSTEM_ID),
+            system_id: fld(
                 "system_id",
+                COctetString::from_str(system_id, MAX_LENGTH_SYSTEM_ID),
             )?,
-            password: map_e(
-                COctetString::from_str(password, MAX_LENGTH_PASSWORD),
+            password: fld(
                 "password",
+                COctetString::from_str(password, MAX_LENGTH_PASSWORD),
             )?,
-            system_type: map_e(
-                COctetString::from_str(system_type, MAX_LENGTH_SYSTEM_TYPE),
+            system_type: fld(
                 "system_type",
+                COctetString::from_str(system_type, MAX_LENGTH_SYSTEM_TYPE),
             )?,
             interface_version: Integer1::new(interface_version),
             addr_ton: Integer1::new(addr_ton),
             addr_npi: Integer1::new(addr_npi),
-            address_range: map_e(
-                COctetString::from_str(address_range, MAX_LENGTH_ADDRESS_RANGE),
+            address_range: fld(
                 "address_range",
+                COctetString::from_str(address_range, MAX_LENGTH_ADDRESS_RANGE),
             )?,
         })
     }
@@ -71,30 +63,32 @@ impl BindTransmitterPdu {
     pub fn parse(
         bytes: &mut dyn io::BufRead,
     ) -> Result<BindTransmitterPdu, PduParseError> {
-        let command_status = Integer4::read(bytes)?;
-        let sequence_number = Integer4::read(bytes)?;
-        let system_id = map_e(
-            COctetString::read(bytes, MAX_LENGTH_SYSTEM_ID),
-            "system_id",
-        )?;
+        let command_status = fld("command_status", Integer4::read(bytes))?;
+        let sequence_number = fld("sequence_number", Integer4::read(bytes))?;
+        let system_id =
+            fld("system_id", COctetString::read(bytes, MAX_LENGTH_SYSTEM_ID))?;
         let password =
-            map_e(COctetString::read(bytes, MAX_LENGTH_PASSWORD), "password")?;
-        let system_type = map_e(
-            COctetString::read(bytes, MAX_LENGTH_SYSTEM_TYPE),
+            fld("password", COctetString::read(bytes, MAX_LENGTH_PASSWORD))?;
+        let system_type = fld(
             "system_type",
+            COctetString::read(bytes, MAX_LENGTH_SYSTEM_TYPE),
         )?;
-        let interface_version = Integer1::read(bytes)?;
-        let addr_ton = Integer1::read(bytes)?;
-        let addr_npi = Integer1::read(bytes)?;
-        let address_range = map_e(
-            COctetString::read(bytes, MAX_LENGTH_ADDRESS_RANGE),
+        let interface_version =
+            fld("interface_version", Integer1::read(bytes))?;
+        let addr_ton = fld("addr_ton", Integer1::read(bytes))?;
+        let addr_npi = fld("addr_npi", Integer1::read(bytes))?;
+        let address_range = fld(
             "address_range",
+            COctetString::read(bytes, MAX_LENGTH_ADDRESS_RANGE),
         )?;
 
         if command_status.value != 0x00 {
+            // TODO: FieldlessPduParseError type, that gets converted to a real
+            //       PduParseError by optionally annotating it with a field_name.
             return Err(PduParseError::for_statusisnotzero(
                 command_status.value,
-            ));
+            )
+            .into_with_field_name("command_status"));
         }
 
         Ok(BindTransmitterPdu {
