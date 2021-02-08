@@ -289,7 +289,6 @@ mod tests {
                     0x00,
                     0x03,
                     0x00,
-                    0x04,
                     b"hihi"
                 )
                 .unwrap()
@@ -297,5 +296,71 @@ mod tests {
         );
     }
 
-    // TODO: more tests for SubmitSm, including IncorrectLength
+    #[test]
+    fn parse_valid_submit_sm_with_empty_short_message_and_no_tlvs() {
+        const PDU: &[u8; 0x3e] = b"\
+            \x00\x00\x00\x39\
+            \x00\x00\x00\x04\
+            \x00\x00\x00\x00\
+            \x00\x00\x00\x03\
+            \x00\
+            \x00\x00447000123123\x00\
+            \x00\x00447111222222\x00\
+            \x00\x01\x01\x00\x00\x01\x00\x03\
+            \x00\x00extra";
+
+        let mut cursor = Cursor::new(&PDU[..]);
+        assert_eq!(
+            Pdu::parse(&mut cursor).unwrap(),
+            Pdu::SubmitSm(
+                SubmitSmPdu::new(
+                    0x00000003,
+                    "",
+                    0x00,
+                    0x00,
+                    "447000123123",
+                    0x00,
+                    0x00,
+                    "447111222222",
+                    0x00,
+                    0x01,
+                    0x01,
+                    "",
+                    "",
+                    0x01,
+                    0x00,
+                    0x03,
+                    0x00,
+                    &[]
+                )
+                .unwrap()
+            )
+        );
+    }
+
+    #[test]
+    fn parse_submit_sm_with_too_long_message_length() {
+        const PDU: &[u8; 0x3d] = b"\
+            \x00\x00\x00\x3d\
+            \x00\x00\x00\x04\
+            \x00\x00\x00\x00\
+            \x00\x00\x00\x03\
+            \x00\
+            \x00\x00447000123123\x00\
+            \x00\x00447111222222\x00\
+            \x00\x01\x01\x00\x00\x01\x00\x03\
+            \x00\x08hihi";
+
+        let mut cursor = Cursor::new(&PDU[..]);
+        let err = Pdu::parse(&mut cursor).unwrap_err();
+        assert_eq!(
+            err.to_string(),
+            "Error parsing PDU \
+            (command_id=0x00000004, field_name=short_message): \
+            IO error creating Octet String: failed to fill whole buffer"
+        );
+    }
+
+    // TODO: submit_sm with message_payload TLV and no short_message
+    // TODO: submit_sm with message_payload TLV AND short_message is an error
 }

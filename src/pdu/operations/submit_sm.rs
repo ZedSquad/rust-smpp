@@ -32,7 +32,6 @@ pub struct SubmitSmPdu {
     replace_if_present_flag: Integer1,
     data_coding: Integer1,
     sm_default_msg_id: Integer1,
-    sm_length: Integer1,
     short_message: OctetString,
     // TODO: TLVs
 }
@@ -73,7 +72,6 @@ impl SubmitSmPdu {
         replace_if_present_flag: u8,
         data_coding: u8,
         sm_default_msg_id: u8,
-        sm_length: u8,
         short_message: &[u8],
     ) -> Result<Self, PduParseError> {
         validate_length_1_or_17(
@@ -118,7 +116,6 @@ impl SubmitSmPdu {
             replace_if_present_flag: Integer1::new(replace_if_present_flag),
             data_coding: Integer1::new(data_coding),
             sm_default_msg_id: Integer1::new(sm_default_msg_id),
-            sm_length: Integer1::new(sm_length),
             short_message: fld(
                 "short_message",
                 OctetString::from_bytes(
@@ -217,7 +214,6 @@ impl SubmitSmPdu {
             replace_if_present_flag,
             data_coding,
             sm_default_msg_id,
-            sm_length,
             short_message,
         })
     }
