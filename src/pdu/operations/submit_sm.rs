@@ -33,7 +33,7 @@ pub struct SubmitSmPdu {
     data_coding: Integer1,
     sm_default_msg_id: Integer1,
     short_message: OctetString,
-    // TODO: TLVs
+    // Issue#2: TLVs
 }
 
 fn validate_length_1_or_17(
@@ -194,7 +194,7 @@ impl SubmitSmPdu {
             "validity_period",
             validity_period.value.len(),
         )?;
-        // TODO: check EITHER short_message, or message_payload TLV
+        // Issue#2: check EITHER short_message, or message_payload TLV
 
         Ok(Self {
             sequence_number,

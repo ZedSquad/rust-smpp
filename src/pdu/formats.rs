@@ -139,6 +139,12 @@ pub struct COctetString {
 // it.
 
 impl COctetString {
+    pub fn new() -> COctetString {
+        Self {
+            value: AsciiString::new(),
+        }
+    }
+
     pub fn from_bytes(
         value: &[u8],
         max_len: usize,

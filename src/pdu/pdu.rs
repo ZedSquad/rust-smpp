@@ -6,8 +6,12 @@ use crate::pdu::formats::{Integer4, WriteStream};
 use crate::pdu::validate_command_length::validate_command_length;
 use crate::pdu::{
     check, BindTransmitterPdu, BindTransmitterRespPdu, CheckError,
-    CheckOutcome, GenericNackPdu, PduParseError, SubmitSmPdu,
+    CheckOutcome, GenericNackPdu, PduParseError, SubmitSmPdu, SubmitSmRespPdu,
 };
+
+// It will be worth considering later whether the reading/writing code
+// for the PDUs defined in the pdu::operations module could be generated using
+// a derive macro rather than hand-coded as they are now.
 
 #[derive(Debug, PartialEq)]
 pub enum Pdu {
@@ -15,6 +19,7 @@ pub enum Pdu {
     BindTransmitterResp(BindTransmitterRespPdu),
     GenericNack(GenericNackPdu),
     SubmitSm(SubmitSmPdu),
+    SubmitSmResp(SubmitSmRespPdu),
 }
 
 impl Pdu {
@@ -59,6 +64,7 @@ impl Pdu {
             Pdu::BindTransmitterResp(pdu) => pdu.write(stream).await,
             Pdu::GenericNack(pdu) => pdu.write(stream).await,
             Pdu::SubmitSm(pdu) => pdu.write(stream).await,
+            Pdu::SubmitSmResp(pdu) => pdu.write(stream).await,
         }
     }
 }
@@ -71,9 +77,12 @@ pub fn call_parse(
         0x00000002 => {
             BindTransmitterPdu::parse(bytes).map(|p| Pdu::BindTransmitter(p))
         }
-        0x00000004 => SubmitSmPdu::parse(bytes).map(|p| Pdu::SubmitSm(p)),
         0x80000002 => BindTransmitterRespPdu::parse(bytes)
             .map(|p| Pdu::BindTransmitterResp(p)),
+        0x00000004 => SubmitSmPdu::parse(bytes).map(|p| Pdu::SubmitSm(p)),
+        0x80000004 => {
+            SubmitSmRespPdu::parse(bytes).map(|p| Pdu::SubmitSmResp(p))
+        }
         _ => Err(PduParseError::for_unknown_command_id(command_id)),
     }
 }
@@ -361,6 +370,82 @@ mod tests {
         );
     }
 
-    // TODO: submit_sm with message_payload TLV and no short_message
-    // TODO: submit_sm with message_payload TLV AND short_message is an error
+    #[test]
+    fn parse_submit_sm_resp_ok_with_message_id() {
+        const PDU: &[u8; 0x3a] = b"\
+            \x00\x00\x00\x35\
+            \x80\x00\x00\x04\
+            \x00\x00\x00\x00\
+            \x00\x00\x00\x04\
+            ea04b3d4-6a18-11eb-a387-c8f7507e3592\x00\
+            extra";
+
+        let mut cursor = Cursor::new(&PDU[..]);
+        assert_eq!(
+            Pdu::parse(&mut cursor).unwrap(),
+            Pdu::SubmitSmResp(
+                SubmitSmRespPdu::new_ok(
+                    0x00000004,
+                    "ea04b3d4-6a18-11eb-a387-c8f7507e3592",
+                )
+                .unwrap()
+            )
+        );
+    }
+
+    #[test]
+    fn parse_submit_sm_resp_ok_without_message_id_is_an_error() {
+        const PDU: &[u8; 0x10] = b"\
+            \x00\x00\x00\x10\
+            \x80\x00\x00\x04\
+            \x00\x00\x00\x00\
+            \x00\x00\x00\x04";
+
+        let mut cursor = Cursor::new(&PDU[..]);
+        assert_eq!(
+            Pdu::parse(&mut cursor).unwrap_err().to_string(),
+            "Error parsing PDU (command_id=0x80000004, field_name=message_id): \
+            C-Octet String does not end with the NULL character."
+        );
+        // Slightly unhelpful error message.  Better would be: submit_sm_resp
+        // had command_status of zero but did not include a message_id.
+    }
+
+    #[test]
+    fn parse_submit_sm_resp_error_without_message_id() {
+        const PDU: &[u8; 0x10] = b"\
+            \x00\x00\x00\x10\
+            \x80\x00\x00\x04\
+            \x00\x00\x00\x07\
+            \x00\x00\x00\x04";
+
+        let mut cursor = Cursor::new(&PDU[..]);
+        assert_eq!(
+            Pdu::parse(&mut cursor).unwrap(),
+            Pdu::SubmitSmResp(
+                SubmitSmRespPdu::new_error(0x00000007, 0x00000004).unwrap()
+            )
+        );
+    }
+
+    #[test]
+    fn parse_submit_sm_resp_error_with_message_id_is_an_error() {
+        const PDU: &[u8; 0x12] = b"\
+            \x00\x00\x00\x12\
+            \x80\x00\x00\x04\
+            \x00\x00\x00\x07\
+            \x00\x00\x00\x04\
+            a\x00";
+
+        let mut cursor = Cursor::new(&PDU[..]);
+        assert_eq!(
+            Pdu::parse(&mut cursor).unwrap_err().to_string(),
+            "Error parsing PDU (command_id=0x80000004, field_name=UNKNOWN): \
+            PDU body must not be supplied when status is not zero, but \
+            command_status is 7.",
+        );
+    }
+
+    // Issue#2: submit_sm with message_payload TLV and no short_message
+    // Issue#2: submit_sm with message_payload TLV AND short_message is an error
 }

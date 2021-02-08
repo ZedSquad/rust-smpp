@@ -11,6 +11,7 @@ use super::CheckError;
 
 #[derive(Debug)]
 pub enum PduParseErrorBody {
+    BodyNotAllowedWhenStatusIsNotZero(u32),
     LengthLongerThanPdu(u32),
     LengthTooLong(u32),
     LengthTooShort(u32),
@@ -88,6 +89,15 @@ impl PduParseError {
                 length,
                 String::from(message),
             ),
+        }
+    }
+
+    pub fn for_bodynotallowedwhenstatusisnotzero(status: u32) -> Self {
+        Self {
+            command_id: None,
+            sequence_number: None,
+            field_name: None,
+            body: PduParseErrorBody::BodyNotAllowedWhenStatusIsNotZero(status),
         }
     }
 
@@ -183,20 +193,49 @@ impl Display for PduParseError {
         formatter: &mut Formatter,
     ) -> std::result::Result<(), std::fmt::Error> {
         let msg = match &self.body {
-            PduParseErrorBody::IncorrectLength(length, message) => format!("Length {} was incorrect: {}", length, message),
-            PduParseErrorBody::LengthLongerThanPdu(length) => format!("Finished parsing PDU but its length ({}) suggested it was longer.", length),
-            PduParseErrorBody::LengthTooLong(length) => format!("Length ({}) too long.  Max allowed is {} octets.", length, MAX_PDU_LENGTH),
-            PduParseErrorBody::LengthTooShort(length) => format!("Length ({}) too short.  Min allowed is {} octets.", length, MIN_PDU_LENGTH),
-            PduParseErrorBody::NotEnoughBytes => String::from("Reached end of PDU length (or end of input) before finding all fields of the PDU."),
+            PduParseErrorBody::BodyNotAllowedWhenStatusIsNotZero(status) => {
+                format!(
+                    "PDU body must not be supplied when status is not zero, \
+                    but command_status is {}.",
+                    status
+                )
+            }
+            PduParseErrorBody::IncorrectLength(length, message) => {
+                format!("Length {} was incorrect: {}", length, message)
+            }
+            PduParseErrorBody::LengthLongerThanPdu(length) => format!(
+                "Finished parsing PDU but its length ({}) suggested \
+                    it was longer.",
+                length
+            ),
+            PduParseErrorBody::LengthTooLong(length) => format!(
+                "Length ({}) too long.  Max allowed is {} octets.",
+                length, MAX_PDU_LENGTH
+            ),
+            PduParseErrorBody::LengthTooShort(length) => format!(
+                "Length ({}) too short.  Min allowed is {} octets.",
+                length, MIN_PDU_LENGTH
+            ),
+            PduParseErrorBody::NotEnoughBytes => String::from(
+                "Reached end of PDU length (or end of input) before \
+                    finding all fields of the PDU.",
+            ),
             PduParseErrorBody::OctetStringCreationError(e) => e.to_string(),
-            PduParseErrorBody::OtherIoError(e) => format!("IO error: {}", e.to_string()),
-            PduParseErrorBody::StatusIsNotZero(status) => format!("command_status must be 0, but was {}.", status),
-            PduParseErrorBody::UnknownCommandId => String::from("Supplied command_id is unknown."),
+            PduParseErrorBody::OtherIoError(e) => {
+                format!("IO error: {}", e.to_string())
+            }
+            PduParseErrorBody::StatusIsNotZero(status) => {
+                format!("command_status must be 0, but was {}.", status)
+            }
+            PduParseErrorBody::UnknownCommandId => {
+                String::from("Supplied command_id is unknown.")
+            }
         };
 
         formatter.write_fmt(format_args!(
             "Error parsing PDU (command_id={}, field_name={}): {}",
-            // Issue#1: Should be: "Error parsing PDU (command_id={}, sequence_number={}, field_name={}): {}",
+            // Issue#1: Should be: "Error parsing PDU
+            // (command_id={}, sequence_number={}, field_name={}): {}",
             as_hex(self.command_id),
             // Issue#1: Should be: as_hex(self.sequence_number),
             self.field_name.clone().unwrap_or(String::from("UNKNOWN")),
