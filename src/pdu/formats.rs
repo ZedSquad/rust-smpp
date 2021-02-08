@@ -353,13 +353,51 @@ mod tests {
     }
 
     #[test]
-    fn read_octetstring() {
-        let mut bytes = io::BufReader::new("foobar\0".as_bytes());
+    fn can_read_octetstring_without_trailing_zero_and_extra_bytes_after() {
+        let mut bytes = io::BufReader::new("foobarextra".as_bytes());
+        assert_eq!(
+            OctetString::read(&mut bytes, 6, 20).unwrap(),
+            OctetString::from_bytes(b"foobar", 20).unwrap()
+        );
+    }
+
+    #[test]
+    fn when_reading_octetstring_ending_zero_the_zero_is_included_in_output() {
+        let mut bytes = io::BufReader::new("foobar\0extra".as_bytes());
         assert_eq!(
             OctetString::read(&mut bytes, 7, 20).unwrap(),
             OctetString::from_bytes(b"foobar\0", 20).unwrap()
         );
     }
 
-    // TODO: more tests for OctetString, including write
+    #[test]
+    fn when_finding_eof_within_octetstring_fail() {
+        let mut bytes = io::BufReader::new("foo".as_bytes());
+        assert!(matches!(
+            OctetString::read(&mut bytes, 7, 20).unwrap_err(),
+            OctetStringCreationError::OtherIoError(_),
+        ));
+    }
+
+    #[tokio::test]
+    async fn write_octetstring() {
+        let mut buf: Vec<u8> = Vec::new();
+        let val = OctetString::from_bytes(b"abc", 16).unwrap();
+        val.write(&mut buf).await.unwrap();
+        assert_eq!(buf, vec!['a' as u8, 'b' as u8, 'c' as u8]);
+    }
+
+    #[tokio::test]
+    async fn write_octetstring_containing_zeroes() {
+        let mut buf: Vec<u8> = Vec::new();
+        let val = OctetString::from_bytes(b"abc\0def\0", 16).unwrap();
+        val.write(&mut buf).await.unwrap();
+        assert_eq!(
+            buf,
+            vec![
+                'a' as u8, 'b' as u8, 'c' as u8, 0 as u8, 'd' as u8, 'e' as u8,
+                'f' as u8, 0
+            ]
+        );
+    }
 }
