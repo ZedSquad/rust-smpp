@@ -3,8 +3,6 @@ use std::io;
 use crate::pdu::formats::WriteStream;
 use crate::pdu::PduParseError;
 
-pub const GENERIC_NACK: u32 = 0x80000000;
-
 // TODO: no need for this struct at all?
 #[derive(Debug, PartialEq)]
 pub struct GenericNackPdu {}

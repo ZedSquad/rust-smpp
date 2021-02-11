@@ -6,9 +6,6 @@ use tokio::io::AsyncWriteExt;
 // TODO: search for and replace all PDU type constants
 
 use crate::pdu::formats::{Integer4, WriteStream};
-use crate::pdu::operations::bind_transmitter_resp::BIND_TRANSMITTER_RESP;
-use crate::pdu::operations::generic_nack::GENERIC_NACK;
-use crate::pdu::operations::submit_sm_resp::SUBMIT_SM_RESP;
 use crate::pdu::validate_command_length::validate_command_length;
 use crate::pdu::{
     check, BindTransmitterPdu, BindTransmitterRespPdu, CheckError,
@@ -29,9 +26,10 @@ pub enum PduBody {
     SubmitSmResp(SubmitSmRespPdu),
 }
 
+// TODO: impl From<GenericNackPdu> for PduBody etc.
+
 #[derive(Debug, PartialEq)]
 pub struct Pdu {
-    pub command_id: Integer4, // TODO: consider removing this since it's implicit in the body type
     pub command_status: Integer4,
     pub sequence_number: Integer4,
     pub body: PduBody,
@@ -39,14 +37,12 @@ pub struct Pdu {
 
 impl Pdu {
     pub fn new(
-        command_id: u32,
         command_status: u32,
         sequence_number: u32,
         body: PduBody,
     ) -> Self {
         // TODO: don't allow constructing without this?
         Self {
-            command_id: Integer4::new(command_id),
             command_status: Integer4::new(command_status),
             sequence_number: Integer4::new(sequence_number),
             body,
@@ -58,7 +54,6 @@ impl Pdu {
         sequence_number: u32,
     ) -> Self {
         Self::new(
-            GENERIC_NACK,
             command_status,
             sequence_number,
             PduBody::GenericNack(GenericNackPdu::new_error()),
@@ -70,7 +65,6 @@ impl Pdu {
         system_id: &str,
     ) -> Result<Self, PduParseError> {
         Ok(Self::new(
-            BIND_TRANSMITTER_RESP,
             0x00000000,
             sequence_number,
             PduBody::BindTransmitterResp(BindTransmitterRespPdu::new(
@@ -84,7 +78,6 @@ impl Pdu {
         sequence_number: u32,
     ) -> Self {
         Self::new(
-            BIND_TRANSMITTER_RESP,
             command_status,
             sequence_number,
             PduBody::BindTransmitterResp(BindTransmitterRespPdu::new_error()),
@@ -96,7 +89,6 @@ impl Pdu {
         sequence_number: u32,
     ) -> Self {
         Pdu::new(
-            SUBMIT_SM_RESP,
             command_status,
             sequence_number,
             PduBody::SubmitSmResp(SubmitSmRespPdu::new_error()),
@@ -162,7 +154,6 @@ impl Pdu {
                 })?;
 
         Ok(Pdu {
-            command_id,
             command_status,
             sequence_number,
             body,
@@ -177,7 +168,7 @@ impl Pdu {
 
     pub async fn write(&self, stream: &mut WriteStream) -> io::Result<()> {
         let mut buf = Vec::new();
-        self.command_id.write(&mut buf).await?;
+        self.command_id().write(&mut buf).await?;
         self.command_status.write(&mut buf).await?;
         self.sequence_number.write(&mut buf).await?;
         match &self.body {
@@ -191,6 +182,16 @@ impl Pdu {
         command_length.write(stream).await?;
         stream.write(&buf).await?;
         Ok(())
+    }
+
+    pub fn command_id(&self) -> Integer4 {
+        Integer4::new(match self.body {
+            PduBody::GenericNack(_) => 0x80000000,
+            PduBody::BindTransmitter(_) => 0x00000002,
+            PduBody::BindTransmitterResp(_) => 0x80000002,
+            PduBody::SubmitSm(_) => 0x00000004,
+            PduBody::SubmitSmResp(_) => 0x80000004,
+        })
     }
 }
 
@@ -232,9 +233,6 @@ mod tests {
     use std::io::Cursor;
 
     use super::*;
-    use crate::pdu::operations::bind_transmitter::BIND_TRANSMITTER;
-    use crate::pdu::operations::submit_sm::SUBMIT_SM;
-    use crate::pdu::operations::submit_sm_resp::SUBMIT_SM_RESP;
 
     const BIND_TRANSMITTER_RESP_PDU_PLUS_EXTRA: &[u8; 0x1b + 0xa] =
         b"\x00\x00\x00\x1b\x80\x00\x00\x02\x00\x00\x00\x00\x00\x00\x00\x02\
@@ -265,7 +263,6 @@ mod tests {
         assert_eq!(
             Pdu::parse(&mut cursor).unwrap(),
             Pdu::new(
-                BIND_TRANSMITTER,
                 0x00000000,
                 0x01020344,
                 PduBody::BindTransmitter(
@@ -428,7 +425,6 @@ mod tests {
         assert_eq!(
             Pdu::parse(&mut cursor).unwrap(),
             Pdu::new(
-                BIND_TRANSMITTER_RESP,
                 0x00000000,
                 0x00000002,
                 PduBody::BindTransmitterResp(
@@ -455,7 +451,6 @@ mod tests {
         assert_eq!(
             Pdu::parse(&mut cursor).unwrap(),
             Pdu::new(
-                SUBMIT_SM,
                 0x00000000,
                 0x00000003,
                 PduBody::SubmitSm(
@@ -501,7 +496,6 @@ mod tests {
         assert_eq!(
             Pdu::parse(&mut cursor).unwrap(),
             Pdu::new(
-                SUBMIT_SM,
                 0x00000000,
                 0x00000003,
                 PduBody::SubmitSm(
@@ -568,7 +562,6 @@ mod tests {
         assert_eq!(
             Pdu::parse(&mut cursor).unwrap(),
             Pdu::new(
-                SUBMIT_SM_RESP,
                 0x00000000,
                 0x00000004,
                 PduBody::SubmitSmResp(

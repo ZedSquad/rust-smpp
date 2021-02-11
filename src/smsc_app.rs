@@ -202,7 +202,7 @@ async fn handle_pdu(
         )
         .map_err(|e| e.into()),
         _ => Err(ProcessError::new_unexpected_pdu_type(
-            pdu.command_id.value,
+            pdu.command_id().value,
             pdu.sequence_number.value,
         )),
     }

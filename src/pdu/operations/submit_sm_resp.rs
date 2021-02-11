@@ -5,8 +5,6 @@ use crate::pdu::formats::{COctetString, WriteStream};
 use crate::pdu::pduparseerror::fld;
 use crate::pdu::{PduParseError, PduParseErrorBody};
 
-pub const SUBMIT_SM_RESP: u32 = 0x80000004;
-
 // https://smpp.org/SMPP_v3_4_Issue1_2.pdf
 // 4.4.2 lists both 9 and 33 crossed out, before listing 65 as the
 // max size of the message_id.

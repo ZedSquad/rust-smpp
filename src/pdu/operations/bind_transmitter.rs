@@ -4,8 +4,6 @@ use crate::pdu::formats::{COctetString, Integer1, WriteStream};
 use crate::pdu::pduparseerror::fld;
 use crate::pdu::{PduParseError, PduParseErrorBody};
 
-pub const BIND_TRANSMITTER: u32 = 0x00000002;
-
 const MAX_LENGTH_SYSTEM_ID: usize = 16;
 const MAX_LENGTH_PASSWORD: usize = 9;
 const MAX_LENGTH_SYSTEM_TYPE: usize = 13;

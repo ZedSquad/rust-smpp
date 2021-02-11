@@ -4,8 +4,6 @@ use crate::pdu::formats::{COctetString, Integer1, OctetString, WriteStream};
 use crate::pdu::pduparseerror::fld;
 use crate::pdu::{PduParseError, PduParseErrorBody};
 
-pub const SUBMIT_SM: u32 = 0x00000004;
-
 const MAX_LENGTH_SERVICE_TYPE: usize = 6;
 const MAX_LENGTH_SOURCE_ADDR: usize = 21;
 const MAX_LENGTH_DESTINATION_ADDR: usize = 21;
