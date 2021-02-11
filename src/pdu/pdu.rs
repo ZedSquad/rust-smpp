@@ -3,8 +3,6 @@ use std::io;
 use std::io::Read;
 use tokio::io::AsyncWriteExt;
 
-// TODO: search for and replace all PDU type constants
-
 use crate::pdu::formats::{Integer4, WriteStream};
 use crate::pdu::validate_command_length::validate_command_length;
 use crate::pdu::{
