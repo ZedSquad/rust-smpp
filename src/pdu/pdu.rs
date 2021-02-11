@@ -93,7 +93,7 @@ impl From<SubmitSmRespPdu> for PduBody {
 pub struct Pdu {
     pub command_status: Integer4,
     pub sequence_number: Integer4,
-    pub body: PduBody,
+    body: PduBody,
 }
 
 impl Pdu {
@@ -202,6 +202,10 @@ impl Pdu {
             PduBody::SubmitSm(_) => 0x00000004,
             PduBody::SubmitSmResp(_) => 0x80000004,
         })
+    }
+
+    pub fn body(&self) -> &PduBody {
+        &self.body
     }
 }
 

@@ -209,7 +209,7 @@ async fn handle_pdu(
     config: &SmscConfig,
 ) -> Result<Pdu, ProcessError> {
     info!("<= {:?}", pdu);
-    match pdu.body {
+    match pdu.body() {
         PduBody::BindTransmitter(_body) => Pdu::new(
             0x00000000,
             pdu.sequence_number.value,
