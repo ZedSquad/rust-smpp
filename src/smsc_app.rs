@@ -250,7 +250,7 @@ impl SmppConnection {
                 buf.set_position(0);
                 let pdu = Pdu::parse(&mut buf)?;
 
-                // Parsing succeeded, so consume the bytes from buffer and return
+                // Parsing succeeded, so consume bytes from buffer and return
                 self.buffer.advance(len);
                 Ok(Some(pdu))
             }

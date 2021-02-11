@@ -46,7 +46,10 @@ fn validate_length_1_or_17(
     } else {
         Err(PduParseError::new(PduParseErrorBody::IncorrectLength(
             length as u32,
-            String::from("Must be either 1 or 17 characters, including the NULL character."),
+            String::from(
+                "Must be either 1 or 17 characters, including \
+                the NULL character.",
+            ),
         ))
         .into_with_field_name(field_name))
     }

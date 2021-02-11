@@ -81,8 +81,9 @@ impl BindTransmitterPdu {
         )?;
 
         if command_status != 0x00000000 {
-            // TODO: FieldlessPduParseError type, that gets converted to a real
-            //       PduParseError by optionally annotating it with a field_name.
+            // TODO: FieldlessPduParseError type, that gets converted to a
+            //       real PduParseError by optionally annotating it with a
+            //       field_name.
             return Err(PduParseError::new(PduParseErrorBody::StatusIsNotZero)
                 .into_with_field_name("command_status"));
         }

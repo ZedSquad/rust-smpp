@@ -145,11 +145,12 @@ impl Pdu {
                                 command_length.value,
                             ),
                         ))
-                        // Note: Ideally, the sequence number in the response would
-                        // match the one supplied, but currently we don't include that.
-                        // This seems OK since really PDU does not parse correctly, but
-                        // it would be even better if we parsed the header and used that
-                        // to shape our error responses.
+                        // Note: Ideally, the sequence number in the response
+                        // would match the one supplied, but currently we don't
+                        // include that.  This seems OK since really PDU does
+                        // not parse correctly, but it would be even better if
+                        // we parsed the header and used that to shape our error
+                        // responses.
                     }
                 })
                 .map_err(|e| {
@@ -236,7 +237,8 @@ mod tests {
     use crate::pdu::operations::submit_sm_resp::SUBMIT_SM_RESP;
 
     const BIND_TRANSMITTER_RESP_PDU_PLUS_EXTRA: &[u8; 0x1b + 0xa] =
-        b"\x00\x00\x00\x1b\x80\x00\x00\x02\x00\x00\x00\x00\x00\x00\x00\x02TestServer\0extrabytes";
+        b"\x00\x00\x00\x1b\x80\x00\x00\x02\x00\x00\x00\x00\x00\x00\x00\x02\
+        TestServer\0extrabytes";
 
     #[test]
     fn check_is_ok_if_more_bytes() {
@@ -256,7 +258,8 @@ mod tests {
     #[test]
     fn parse_valid_bind_transmitter() {
         const BIND_TRANSMITTER_PDU_PLUS_EXTRA: &[u8; 0x2e + 0x6] =
-            b"\x00\x00\x00\x2e\x00\x00\x00\x02\x00\x00\x00\x00\x01\x02\x03\x44mysystem_ID\0pw$xx\0t_p_\0\x34\x13\x50rng\0foobar";
+            b"\x00\x00\x00\x2e\x00\x00\x00\x02\x00\x00\x00\x00\x01\x02\x03\x44\
+            mysystem_ID\0pw$xx\0t_p_\0\x34\x13\x50rng\0foobar";
 
         let mut cursor = Cursor::new(&BIND_TRANSMITTER_PDU_PLUS_EXTRA[..]);
         assert_eq!(
@@ -285,7 +288,8 @@ mod tests {
     fn parse_bind_transmitter_with_too_long_system_id() {
         // TODO: wrap lines
         const PDU: &[u8; 0x29] =
-            b"\x00\x00\x00\x29\x00\x00\x00\x02\x00\x00\x00\x00\x01\x02\x03\x44ABDEFABCDEFABCDEFA\0\0\0\x34\x13\x50\0";
+            b"\x00\x00\x00\x29\x00\x00\x00\x02\x00\x00\x00\x00\x01\x02\x03\x44\
+            ABDEFABCDEFABCDEFA\0\0\0\x34\x13\x50\0";
         let mut cursor = Cursor::new(&PDU[..]);
 
         let res = Pdu::parse(&mut cursor).unwrap_err();
@@ -302,7 +306,8 @@ mod tests {
     #[test]
     fn parse_bind_transmitter_with_length_ending_within_string() {
         const PDU: &[u8; 0x29] =
-            b"\x00\x00\x00\x12\x00\x00\x00\x02\x00\x00\x00\x00\x01\x02\x03\x44ABDEFABCDEFABCDEFA\0\0\0\x34\x13\x50\0";
+            b"\x00\x00\x00\x12\x00\x00\x00\x02\x00\x00\x00\x00\x01\x02\x03\x44\
+            ABDEFABCDEFABCDEFA\0\0\0\x34\x13\x50\0";
         let mut cursor = Cursor::new(&PDU[..]);
 
         let res = Pdu::parse(&mut cursor).unwrap_err();
@@ -318,7 +323,8 @@ mod tests {
     #[test]
     fn parse_bind_transmitter_ending_before_all_fields() {
         const PDU: &[u8; 0x13] =
-            b"\x00\x00\x00\x13\x00\x00\x00\x02\x00\x00\x00\x00\x01\x02\x03\x44\0\0\0";
+            b"\x00\x00\x00\x13\x00\x00\x00\x02\x00\x00\x00\x00\x01\x02\x03\x44\
+            \0\0\0";
         let mut cursor = Cursor::new(&PDU[..]);
 
         let res = Pdu::parse(&mut cursor).unwrap_err();
@@ -383,7 +389,8 @@ mod tests {
     #[test]
     fn parse_bind_transmitter_containing_nonascii_characters() {
         const PDU: &[u8; 0x2e + 0x6] =
-            b"\x00\x00\x00\x2e\x00\x00\x00\x02\x00\x00\x00\x00\x01\x02\x03\x44mys\xf0\x9f\x92\xa9m_ID\0pw$xx\0t_p_\0\x34\x13\x50rng\0foobar";
+            b"\x00\x00\x00\x2e\x00\x00\x00\x02\x00\x00\x00\x00\x01\x02\x03\x44\
+            mys\xf0\x9f\x92\xa9m_ID\0pw$xx\0t_p_\0\x34\x13\x50rng\0foobar";
         let mut cursor = Cursor::new(&PDU);
 
         let res = Pdu::parse(&mut cursor).unwrap_err();
@@ -399,7 +406,8 @@ mod tests {
     #[test]
     fn parse_bind_transmitter_with_nonzero_status() {
         const PDU: &[u8; 0x2e + 0x6] =
-            b"\x00\x00\x00\x2e\x00\x00\x00\x02\x00\x00\x00\x77\x01\x02\x03\x44mysystem_ID\0pw$xx\0t_p_\0\x34\x13\x50rng\0foobar";
+            b"\x00\x00\x00\x2e\x00\x00\x00\x02\x00\x00\x00\x77\x01\x02\x03\x44\
+            mysystem_ID\0pw$xx\0t_p_\0\x34\x13\x50rng\0foobar";
         let mut cursor = Cursor::new(&PDU);
 
         let res = Pdu::parse(&mut cursor).unwrap_err();
@@ -415,7 +423,8 @@ mod tests {
     #[test]
     fn parse_valid_bind_transmitter_resp() {
         let mut cursor = Cursor::new(&BIND_TRANSMITTER_RESP_PDU_PLUS_EXTRA[..]);
-        b"\x00\x00\x00\x1b\x80\x00\x00\x02\x00\x00\x00\x00\x00\x00\x00\x02TestServer\0extrabytes";
+        b"\x00\x00\x00\x1b\x80\x00\x00\x02\x00\x00\x00\x00\x00\x00\x00\x02\
+        TestServer\0extrabytes";
         assert_eq!(
             Pdu::parse(&mut cursor).unwrap(),
             Pdu::new(

@@ -32,8 +32,9 @@ fn when_we_receive_bind_transmitter_we_respond_with_resp() {
 #[test]
 fn when_we_receive_a_bad_pdu_we_respond_with_failure_resp_pdu() {
     const PDU: &[u8; 0x29] =
-        b"\x00\x00\x00\x29\x00\x00\x00\x02\x00\x00\x00\x00\x00\x00\x00\x14e\xf0\x9f\x92\xa9d\0password\0type\0\x34\x00\x00\0";
-    //                                                          non-ascii  ^^^^
+        b"\x00\x00\x00\x29\x00\x00\x00\x02\x00\x00\x00\x00\x00\x00\x00\x14\
+        e\xf0\x9f\x92\xa9d\0password\0type\0\x34\x00\x00\0";
+    //  ^^^^ non-ascii
 
     const RESP: &[u8; 0x10] =
         b"\x00\x00\x00\x10\x80\x00\x00\x02\x00\x00\x00\x01\x00\x00\x00\x14";
@@ -131,8 +132,9 @@ fn when_we_receive_wrong_type_of_pdu_we_respond_generic_nack() {
 #[test]
 fn when_we_receive_nontlv_pdu_with_too_long_length_return_an_error() {
     const PDU: &[u8; 0x29] =
-        b"\x00\x00\xff\xff\x00\x00\x00\x02\x00\x00\x00\x00\x00\x00\x00\x02esmeid\0password\0type\0\x34\x00\x00\0";
-    //            ^^^^^^^^ length longer than content
+        b"\x00\x00\xff\xff\x00\x00\x00\x02\x00\x00\x00\x00\x00\x00\x00\x02\
+        esmeid\0password\0type\0\x34\x00\x00\0";
+    // length longer than content
 
     const RESP: &[u8; 0x10] =
         b"\x00\x00\x00\x10\x80\x00\x00\x02\x00\x00\x00\x01\x00\x00\x00\x02";
@@ -168,8 +170,9 @@ fn when_we_receive_nontlv_pdu_with_too_long_length_return_an_error() {
 #[test]
 fn when_we_receive_a_pdu_with_very_long_length_we_respond_generic_nack() {
     const PDU: &[u8; 0x1b] =
-        b"\x00\xff\xff\xff\x00\x00\x00\x02\x00\x00\x00\x00\x00\x00\x00\x02e\0pd\0t\0\x34\x00\x00\0";
-    //            ^^^^^^^^ very long length
+        b"\x00\xff\xff\xff\x00\x00\x00\x02\x00\x00\x00\x00\x00\x00\x00\x02\
+        e\0pd\0t\0\x34\x00\x00\0";
+    // very long length
 
     const RESP: &[u8; 0x10] =
         b"\x00\x00\x00\x10\x80\x00\x00\x00\x00\x01\x00\x02\x00\x00\x00\x00";

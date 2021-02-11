@@ -71,7 +71,8 @@ mod tests {
     use crate::unittest_utils::FailingRead;
 
     const BIND_TRANSMITTER_RESP_PDU_PLUS_EXTRA: &[u8; 0x1b + 0xa] =
-        b"\x00\x00\x00\x1b\x80\x00\x00\x02\x00\x00\x00\x00\x00\x00\x00\x02TestServer\0extrabytes";
+        b"\x00\x00\x00\x1b\x80\x00\x00\x02\x00\x00\x00\x00\x00\x00\x00\x02\
+        TestServer\0extrabytes";
 
     #[test]
     fn check_is_ok_if_more_bytes() {
