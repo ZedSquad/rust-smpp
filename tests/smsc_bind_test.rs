@@ -138,8 +138,6 @@ fn when_we_receive_nontlv_pdu_with_too_long_length_return_an_error() {
         b"\x00\x00\x00\x10\x80\x00\x00\x02\x00\x00\x00\x01\x00\x00\x00\x02";
     //          bind_transmitter_resp ^^^^
 
-    // Issue#1: sequence_number could be copied into error here
-
     let many_bytes: Vec<u8> = PDU
         .iter()
         .copied()
@@ -177,13 +175,16 @@ fn when_we_receive_a_pdu_with_very_long_length_we_respond_generic_nack() {
         b"\x00\x00\x00\x10\x80\x00\x00\x00\x00\x01\x00\x02\x00\x00\x00\x00";
     //       generic_nack ^^^^^^^^^^^^^^^^      error ^^^^        seq ^^^^
 
-    // Issue#1: could be a more specific response?
+    // Note: we don't provide the correct sequence number here: we could, but
+    // we would have to read the PDU header before we notice the invalid
+    // PDU length.  Since a huge length is likely to indicate a catastrophic
+    // error, or malicious traffic, we are not too bothered.
 
     let many_bytes: Vec<u8> = PDU
         .iter()
         .copied()
         .chain(iter::repeat(0x00))
-        .take(1000)
+        .take(0x00ffffff)
         .collect();
 
     // Given an SMSC
@@ -193,13 +194,16 @@ fn when_we_receive_a_pdu_with_very_long_length_we_respond_generic_nack() {
         let mut client = TestClient::connect_to(&server).await.unwrap();
         client.stream.write(&many_bytes).await.unwrap();
 
-        // Then SMSC responds with a generic error
+        // Then SMSC responds with an error
         let resp = client.read_n(RESP.len()).await;
         assert_eq!(s(&resp), s(RESP));
 
         // And then drops the connection
         let resp = client.stream.read_u8().await.unwrap_err();
-        assert_eq!(&resp.to_string(), "unexpected end of file");
+        assert_eq!(
+            &resp.to_string(),
+            "Connection reset by peer (os error 104)"
+        );
     })
 }
 
@@ -236,6 +240,58 @@ fn when_receive_pdu_with_short_length_but_long_string_we_respond_with_error() {
             &resp.to_string(),
             "Connection reset by peer (os error 104)"
         );
+    })
+}
+
+#[test]
+fn when_we_receive_unexpected_pdu_type_we_respond_with_error() {
+    const RESP: &[u8; 0x10] =
+        b"\x00\x00\x00\x10\x80\x00\x00\x00\x00\x01\x00\x03\x00\x00\x00\x02";
+    //       generic_nack ^^^^^^^^^^^^^^^^      error ^^^^        seq ^^^^
+
+    // Given an SMSC
+    let server = TestServer::start().unwrap();
+    server.runtime.block_on(async {
+        // When ESME binds with:
+        // * sequence number = 2
+        let mut client = TestClient::connect_to(&server).await.unwrap();
+        client
+            .stream
+            .write(BIND_TRANSMITTER_RESP_PDU)
+            .await
+            .unwrap();
+
+        // Then SMSC responds, with:
+        // * length = 1b
+        // * type   80000000
+        // * status 00010003 (because this is an error)
+        // * sequence number = 00000002 (because that is what we provided)
+        let resp = client.read_n(RESP.len()).await;
+        assert_eq!(s(&resp), s(RESP));
+    })
+}
+
+#[test]
+fn when_we_receive_invalid_pdu_type_we_respond_with_error() {
+    const PDU: &[u8; 0x10] =
+        b"\x00\x00\x00\x10\xff\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x22";
+    //  invalid command_id ^^^^^^^^^^^^^^^^                       seq ^^^^
+
+    const RESP: &[u8; 0x10] =
+        b"\x00\x00\x00\x10\x80\x00\x00\x00\x00\x01\x00\x01\x00\x00\x00\x22";
+    //       generic_nack ^^^^^^^^^^^^^^^^      error ^^^^        seq ^^^^
+
+    // Given an SMSC
+    let server = TestServer::start().unwrap();
+    server.runtime.block_on(async {
+        // When ESME binds with:
+        // * sequence number = 2
+        let mut client = TestClient::connect_to(&server).await.unwrap();
+        client.stream.write(PDU).await.unwrap();
+
+        // Then SMSC responds with an error
+        let resp = client.read_n(RESP.len()).await;
+        assert_eq!(s(&resp), s(RESP));
     })
 }
 

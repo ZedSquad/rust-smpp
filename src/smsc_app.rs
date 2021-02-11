@@ -114,10 +114,11 @@ impl Display for ProcessError {
     ) -> std::result::Result<(), std::fmt::Error> {
         let s = match self {
             ProcessError::PduParseError(e) => e.to_string(),
-            // Issue#1: UnexpectedPduType should have command_id
-            // and sequence_number
-            ProcessError::UnexpectedPduType(_) => {
-                format!("Unexpected PDU type")
+            ProcessError::UnexpectedPduType(e) => {
+                format!(
+                    "Unexpected PDU type (command_id={}, sequence_number={})",
+                    e.command_id, e.sequence_number
+                )
             }
             ProcessError::IoError(e) => e.to_string(),
         };
