@@ -59,7 +59,7 @@ impl BindTransmitterPdu {
 
     pub fn parse(
         bytes: &mut dyn io::BufRead,
-        command_status: u32,
+        _command_status: u32,
     ) -> Result<BindTransmitterPdu, PduParseError> {
         let system_id =
             fld("system_id", COctetString::read(bytes, MAX_LENGTH_SYSTEM_ID))?;
@@ -78,15 +78,7 @@ impl BindTransmitterPdu {
             COctetString::read(bytes, MAX_LENGTH_ADDRESS_RANGE),
         )?;
 
-        if command_status != 0x00000000 {
-            // TODO: FieldlessPduParseError type, that gets converted to a
-            //       real PduParseError by optionally annotating it with a
-            //       field_name.
-            return Err(PduParseError::new(PduParseErrorBody::StatusIsNotZero)
-                .into_with_field_name("command_status"));
-        }
-
-        Ok(BindTransmitterPdu {
+        Ok(Self {
             system_id,
             password,
             system_type,
@@ -95,5 +87,16 @@ impl BindTransmitterPdu {
             addr_npi,
             address_range,
         })
+    }
+
+    pub fn validate_command_status(
+        self,
+        command_status: u32,
+    ) -> Result<Self, PduParseError> {
+        if command_status == 0x00000000 {
+            Ok(self)
+        } else {
+            Err(PduParseError::new(PduParseErrorBody::StatusIsNotZero))
+        }
     }
 }

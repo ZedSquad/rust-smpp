@@ -2,7 +2,7 @@ use std::io;
 
 use crate::pdu::formats::{COctetString, WriteStream};
 use crate::pdu::pduparseerror::fld;
-use crate::pdu::PduParseError;
+use crate::pdu::{PduParseError, PduParseErrorBody};
 
 const MAX_LENGTH_SYSTEM_ID: usize = 16;
 
@@ -61,6 +61,22 @@ impl BindTransmitterRespPdu {
             None
         };
 
-        Ok(BindTransmitterRespPdu { body })
+        Ok(Self { body })
+    }
+
+    pub fn validate_command_status(
+        self,
+        command_status: u32,
+    ) -> Result<Self, PduParseError> {
+        match (&self.body, command_status) {
+            (Some(_), 0) => Ok(self),
+            (None, 0) => Err(PduParseError::new(
+                PduParseErrorBody::BodyNotAllowedWhenStatusIsNotZero,
+            )),
+            (Some(_), _) => Err(PduParseError::new(
+                PduParseErrorBody::BodyRequiredWhenStatusIsZero,
+            )),
+            (None, _) => Ok(self),
+        }
     }
 }

@@ -60,4 +60,21 @@ impl SubmitSmRespPdu {
             Ok(Self { message_id: None })
         }
     }
+
+    pub fn validate_command_status(
+        self,
+        command_status: u32,
+    ) -> Result<Self, PduParseError> {
+        // TODO: This is identical to the code in BindTransmitterRespPdu
+        match (&self.message_id, command_status) {
+            (Some(_), 0) => Ok(self),
+            (None, 0) => Err(PduParseError::new(
+                PduParseErrorBody::BodyNotAllowedWhenStatusIsNotZero,
+            )),
+            (Some(_), _) => Err(PduParseError::new(
+                PduParseErrorBody::BodyRequiredWhenStatusIsZero,
+            )),
+            (None, _) => Ok(self),
+        }
+    }
 }

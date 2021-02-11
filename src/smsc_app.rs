@@ -10,11 +10,12 @@ use tokio::io::AsyncReadExt;
 use tokio::net::{TcpListener, TcpStream};
 use tokio::sync::{Semaphore, TryAcquireError};
 
-use crate::async_result::AsyncResult;
 use crate::pdu::{
-    CheckOutcome, Pdu, PduBody, PduParseError, PduParseErrorBody,
+    CheckOutcome, GenericNackPdu, Pdu, PduBody, PduParseError,
+    PduParseErrorBody,
 };
 use crate::smsc_config::SmscConfig;
+use crate::{async_result::AsyncResult, pdu::BindTransmitterRespPdu};
 
 // TODO: status as listed at 5.1.3 on https://smpp.org/SMPP_v3_4_Issue1_2.pdf
 const ERROR_STATUS_FAILED_TO_PARSE_OTHER_PDU: u32 = 0x00010001;
@@ -144,10 +145,14 @@ async fn process(
                         Err(e) => {
                             // Couldn't handle this PDU type.  Send a nack...
                             connection
-                                .write_pdu(&Pdu::new_generic_nack_error(
-                                    ERROR_STATUS_UNEXPECTED_PDU_TYPE,
-                                    sequence_number,
-                                ))
+                                .write_pdu(
+                                    &Pdu::new(
+                                        ERROR_STATUS_UNEXPECTED_PDU_TYPE,
+                                        sequence_number,
+                                        GenericNackPdu::new_error().into(),
+                                    )
+                                    .unwrap(),
+                                )
                                 .await?;
                             // ...and Drop the connection.
                             return Err(e);
@@ -175,18 +180,27 @@ fn handle_pdu_parse_error(error: &PduParseError) -> Pdu {
     match error.command_id {
         Some(0x00000002) => {
             // TODO: take error status from a list somewhere
-            Pdu::new_bind_transmitter_resp_error(0x00000001, sequence_number)
+            Pdu::new(
+                0x00000001,
+                sequence_number,
+                BindTransmitterRespPdu::new_error().into(),
+            )
+            .unwrap()
         }
         // For any PDU type we're not set up for, send generic_nack
-        Some(_) => Pdu::new_generic_nack_error(
+        Some(_) => Pdu::new(
             ERROR_STATUS_FAILED_TO_PARSE_OTHER_PDU,
             sequence_number,
-        ),
+            GenericNackPdu::new_error().into(),
+        )
+        .unwrap(),
         // If we don't even know the PDU type, send generic_nack
-        None => Pdu::new_generic_nack_error(
+        None => Pdu::new(
             ERROR_STATUS_PDU_HEADER_INVALID,
             sequence_number,
-        ),
+            GenericNackPdu::new_error().into(),
+        )
+        .unwrap(),
     }
 }
 
@@ -196,9 +210,12 @@ async fn handle_pdu(
 ) -> Result<Pdu, ProcessError> {
     info!("<= {:?}", pdu);
     match pdu.body {
-        PduBody::BindTransmitter(_body) => Pdu::new_bind_transmitter_resp(
+        PduBody::BindTransmitter(_body) => Pdu::new(
+            0x00000000,
             pdu.sequence_number.value,
-            &config.system_id,
+            BindTransmitterRespPdu::new(&config.system_id)
+                .unwrap()
+                .into(),
         )
         .map_err(|e| e.into()),
         _ => Err(ProcessError::new_unexpected_pdu_type(

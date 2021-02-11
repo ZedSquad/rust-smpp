@@ -26,7 +26,68 @@ pub enum PduBody {
     SubmitSmResp(SubmitSmRespPdu),
 }
 
-// TODO: impl From<GenericNackPdu> for PduBody etc.
+impl PduBody {
+    fn validate_command_status(
+        self,
+        command_status: u32,
+    ) -> Result<Self, PduParseError> {
+        self.do_validate_command_status(command_status)
+            .map_err(|e| e.into_with_field_name("command_status"))
+    }
+
+    fn do_validate_command_status(
+        self,
+        command_status: u32,
+    ) -> Result<Self, PduParseError> {
+        Ok(match self {
+            PduBody::BindTransmitter(b) => PduBody::BindTransmitter(
+                b.validate_command_status(command_status)?,
+            ),
+            PduBody::BindTransmitterResp(b) => PduBody::BindTransmitterResp(
+                b.validate_command_status(command_status)?,
+            ),
+            PduBody::GenericNack(b) => {
+                PduBody::GenericNack(b.validate_command_status(command_status)?)
+            }
+            PduBody::SubmitSm(b) => {
+                PduBody::SubmitSm(b.validate_command_status(command_status)?)
+            }
+            PduBody::SubmitSmResp(b) => PduBody::SubmitSmResp(
+                b.validate_command_status(command_status)?,
+            ),
+        })
+    }
+}
+
+impl From<BindTransmitterPdu> for PduBody {
+    fn from(body: BindTransmitterPdu) -> PduBody {
+        PduBody::BindTransmitter(body)
+    }
+}
+
+impl From<BindTransmitterRespPdu> for PduBody {
+    fn from(body: BindTransmitterRespPdu) -> PduBody {
+        PduBody::BindTransmitterResp(body)
+    }
+}
+
+impl From<GenericNackPdu> for PduBody {
+    fn from(body: GenericNackPdu) -> PduBody {
+        PduBody::GenericNack(body)
+    }
+}
+
+impl From<SubmitSmPdu> for PduBody {
+    fn from(body: SubmitSmPdu) -> PduBody {
+        PduBody::SubmitSm(body)
+    }
+}
+
+impl From<SubmitSmRespPdu> for PduBody {
+    fn from(body: SubmitSmRespPdu) -> PduBody {
+        PduBody::SubmitSmResp(body)
+    }
+}
 
 #[derive(Debug, PartialEq)]
 pub struct Pdu {
@@ -40,59 +101,12 @@ impl Pdu {
         command_status: u32,
         sequence_number: u32,
         body: PduBody,
-    ) -> Self {
-        // TODO: don't allow constructing without this?
-        Self {
+    ) -> Result<Self, PduParseError> {
+        Ok(Self {
             command_status: Integer4::new(command_status),
             sequence_number: Integer4::new(sequence_number),
-            body,
-        }
-    }
-
-    pub fn new_generic_nack_error(
-        command_status: u32,
-        sequence_number: u32,
-    ) -> Self {
-        Self::new(
-            command_status,
-            sequence_number,
-            PduBody::GenericNack(GenericNackPdu::new_error()),
-        )
-    }
-
-    pub fn new_bind_transmitter_resp(
-        sequence_number: u32,
-        system_id: &str,
-    ) -> Result<Self, PduParseError> {
-        Ok(Self::new(
-            0x00000000,
-            sequence_number,
-            PduBody::BindTransmitterResp(BindTransmitterRespPdu::new(
-                system_id,
-            )?),
-        ))
-    }
-
-    pub fn new_bind_transmitter_resp_error(
-        command_status: u32,
-        sequence_number: u32,
-    ) -> Self {
-        Self::new(
-            command_status,
-            sequence_number,
-            PduBody::BindTransmitterResp(BindTransmitterRespPdu::new_error()),
-        )
-    }
-
-    pub fn new_submit_sm_resp_error(
-        command_status: u32,
-        sequence_number: u32,
-    ) -> Self {
-        Pdu::new(
-            command_status,
-            sequence_number,
-            PduBody::SubmitSmResp(SubmitSmRespPdu::new_error()),
-        )
+            body: body.validate_command_status(command_status)?,
+        })
     }
 
     pub fn parse(bytes: &mut dyn io::BufRead) -> Result<Pdu, PduParseError> {
@@ -124,25 +138,21 @@ impl Pdu {
             )
         })?;
 
+        let status = command_status.value;
+
         let body =
             parse_body(&mut bytes, command_id.value, command_status.value)
                 .and_then(|ret| {
                     // There should be no bytes left over
                     let mut buf = [0; 1];
                     if bytes.read(&mut buf)? == 0 {
-                        Ok(ret)
+                        Ok(ret.validate_command_status(status)?)
                     } else {
                         Err(PduParseError::new(
                             PduParseErrorBody::LengthLongerThanPdu(
                                 command_length.value,
                             ),
                         ))
-                        // Note: Ideally, the sequence number in the response
-                        // would match the one supplied, but currently we don't
-                        // include that.  This seems OK since really PDU does
-                        // not parse correctly, but it would be even better if
-                        // we parsed the header and used that to shape our error
-                        // responses.
                     }
                 })
                 .map_err(|e| {
@@ -265,19 +275,19 @@ mod tests {
             Pdu::new(
                 0x00000000,
                 0x01020344,
-                PduBody::BindTransmitter(
-                    BindTransmitterPdu::new(
-                        "mysystem_ID",
-                        "pw$xx",
-                        "t_p_",
-                        0x34,
-                        0x13,
-                        0x50,
-                        "rng"
-                    )
-                    .unwrap()
+                BindTransmitterPdu::new(
+                    "mysystem_ID",
+                    "pw$xx",
+                    "t_p_",
+                    0x34,
+                    0x13,
+                    0x50,
+                    "rng"
                 )
+                .unwrap()
+                .into()
             )
+            .unwrap()
         );
     }
 
@@ -431,6 +441,7 @@ mod tests {
                     BindTransmitterRespPdu::new("TestServer",).unwrap(),
                 )
             )
+            .unwrap()
         );
     }
 
@@ -453,29 +464,29 @@ mod tests {
             Pdu::new(
                 0x00000000,
                 0x00000003,
-                PduBody::SubmitSm(
-                    SubmitSmPdu::new(
-                        "",
-                        0x00,
-                        0x00,
-                        "447000123123",
-                        0x00,
-                        0x00,
-                        "447111222222",
-                        0x00,
-                        0x01,
-                        0x01,
-                        "",
-                        "",
-                        0x01,
-                        0x00,
-                        0x03,
-                        0x00,
-                        b"hihi"
-                    )
-                    .unwrap()
+                SubmitSmPdu::new(
+                    "",
+                    0x00,
+                    0x00,
+                    "447000123123",
+                    0x00,
+                    0x00,
+                    "447111222222",
+                    0x00,
+                    0x01,
+                    0x01,
+                    "",
+                    "",
+                    0x01,
+                    0x00,
+                    0x03,
+                    0x00,
+                    b"hihi"
                 )
+                .unwrap()
+                .into()
             )
+            .unwrap()
         );
     }
 
@@ -498,29 +509,29 @@ mod tests {
             Pdu::new(
                 0x00000000,
                 0x00000003,
-                PduBody::SubmitSm(
-                    SubmitSmPdu::new(
-                        "",
-                        0x00,
-                        0x00,
-                        "447000123123",
-                        0x00,
-                        0x00,
-                        "447111222222",
-                        0x00,
-                        0x01,
-                        0x01,
-                        "",
-                        "",
-                        0x01,
-                        0x00,
-                        0x03,
-                        0x00,
-                        &[]
-                    )
-                    .unwrap()
-                ),
+                SubmitSmPdu::new(
+                    "",
+                    0x00,
+                    0x00,
+                    "447000123123",
+                    0x00,
+                    0x00,
+                    "447111222222",
+                    0x00,
+                    0x01,
+                    0x01,
+                    "",
+                    "",
+                    0x01,
+                    0x00,
+                    0x03,
+                    0x00,
+                    &[]
+                )
+                .unwrap()
+                .into()
             )
+            .unwrap()
         );
     }
 
@@ -564,13 +575,11 @@ mod tests {
             Pdu::new(
                 0x00000000,
                 0x00000004,
-                PduBody::SubmitSmResp(
-                    SubmitSmRespPdu::new(
-                        "ea04b3d4-6a18-11eb-a387-c8f7507e3592",
-                    )
+                SubmitSmRespPdu::new("ea04b3d4-6a18-11eb-a387-c8f7507e3592",)
                     .unwrap()
-                )
+                    .into()
             )
+            .unwrap()
         );
     }
 
@@ -605,7 +614,12 @@ mod tests {
         let mut cursor = Cursor::new(&PDU[..]);
         assert_eq!(
             Pdu::parse(&mut cursor).unwrap(),
-            Pdu::new_submit_sm_resp_error(0x00000007, 0x00000004)
+            Pdu::new(
+                0x00000007,
+                0x00000004,
+                SubmitSmRespPdu::new_error().into()
+            )
+            .unwrap()
         );
     }
 

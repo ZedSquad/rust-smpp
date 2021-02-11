@@ -130,13 +130,8 @@ impl SubmitSmPdu {
 
     pub fn parse(
         bytes: &mut dyn io::BufRead,
-        command_status: u32,
+        _command_status: u32,
     ) -> Result<SubmitSmPdu, PduParseError> {
-        if command_status != 0x00000000 {
-            return Err(PduParseError::new(PduParseErrorBody::StatusIsNotZero)
-                .into_with_field_name("command_status"));
-        }
-
         let service_type = fld(
             "service_type",
             COctetString::read(bytes, MAX_LENGTH_SERVICE_TYPE),
@@ -210,5 +205,16 @@ impl SubmitSmPdu {
             sm_default_msg_id,
             short_message,
         })
+    }
+
+    pub fn validate_command_status(
+        self,
+        command_status: u32,
+    ) -> Result<Self, PduParseError> {
+        if command_status == 0x00000000 {
+            Ok(self)
+        } else {
+            Err(PduParseError::new(PduParseErrorBody::StatusIsNotZero))
+        }
     }
 }

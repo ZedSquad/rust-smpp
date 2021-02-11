@@ -183,11 +183,12 @@ fn when_we_receive_a_pdu_with_very_long_length_we_respond_generic_nack() {
     // PDU length.  Since a huge length is likely to indicate a catastrophic
     // error, or malicious traffic, we are not too bothered.
 
+    // TODO: this test becomes flakey if I say take(0x00ffffff) as I should.
     let many_bytes: Vec<u8> = PDU
         .iter()
         .copied()
         .chain(iter::repeat(0x00))
-        .take(0x00ffffff)
+        .take(0x0000ffff)
         .collect();
 
     // Given an SMSC

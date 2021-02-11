@@ -12,6 +12,7 @@ use super::CheckError;
 #[derive(Debug)]
 pub enum PduParseErrorBody {
     BodyNotAllowedWhenStatusIsNotZero,
+    BodyRequiredWhenStatusIsZero,
     LengthLongerThanPdu(u32),
     LengthTooLong(u32),
     LengthTooShort(u32),
@@ -20,6 +21,7 @@ pub enum PduParseErrorBody {
     OctetStringCreationError(OctetStringCreationError),
     OtherIoError(io::Error),
     StatusIsNotZero,
+    StatusIsZero,
     UnknownCommandId,
 }
 
@@ -113,6 +115,10 @@ impl Display for PduParseError {
                     as_hex(self.command_status)
                 )
             }
+            PduParseErrorBody::BodyRequiredWhenStatusIsZero => String::from(
+                "PDU body must be supplied when status is zero, \
+                    but it is missing.",
+            ),
             PduParseErrorBody::IncorrectLength(length, message) => {
                 format!("Length {} was incorrect: {}", length, message)
             }
@@ -142,6 +148,9 @@ impl Display for PduParseError {
                     "command_status must be 0, but was {}.",
                     as_hex(self.command_status)
                 )
+            }
+            PduParseErrorBody::StatusIsZero => {
+                String::from("command_status must not be non-zero, but was 0.")
             }
             PduParseErrorBody::UnknownCommandId => {
                 String::from("Supplied command_id is unknown.")

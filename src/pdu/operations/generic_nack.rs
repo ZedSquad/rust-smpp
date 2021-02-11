@@ -1,7 +1,7 @@
 use std::io;
 
 use crate::pdu::formats::WriteStream;
-use crate::pdu::PduParseError;
+use crate::pdu::{PduParseError, PduParseErrorBody};
 
 // TODO: no need for this struct at all?
 #[derive(Debug, PartialEq)]
@@ -21,5 +21,16 @@ impl GenericNackPdu {
         _command_status: u32,
     ) -> Result<Self, PduParseError> {
         todo!("GenericNackPdu::parse");
+    }
+
+    pub fn validate_command_status(
+        self,
+        command_status: u32,
+    ) -> Result<Self, PduParseError> {
+        if command_status == 0 {
+            Err(PduParseError::new(PduParseErrorBody::StatusIsZero))
+        } else {
+            Ok(self)
+        }
     }
 }
