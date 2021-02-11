@@ -12,7 +12,7 @@ use tokio::sync::{Semaphore, TryAcquireError};
 
 use crate::async_result::AsyncResult;
 use crate::pdu::{
-    BindTransmitterRespPdu, CheckOutcome, GenericNackPdu, Pdu, PduParseError,
+    CheckOutcome, Pdu, PduBody, PduParseError, PduParseErrorBody,
 };
 use crate::smsc_config::SmscConfig;
 
@@ -75,8 +75,9 @@ fn log_result(closed_by_us: Result<bool, ProcessError>, addr: SocketAddr) {
 
 #[derive(Debug)]
 struct UnexpectedPduType {
-    /*    command_id: i32,
-sequence_number: i32,*/}
+    command_id: u32,
+    sequence_number: u32,
+}
 
 #[derive(Debug)]
 enum ProcessError {
@@ -86,8 +87,11 @@ enum ProcessError {
 }
 
 impl ProcessError {
-    fn new_unexpected_pdu_type() -> Self {
-        ProcessError::UnexpectedPduType(UnexpectedPduType {})
+    fn new_unexpected_pdu_type(command_id: u32, sequence_number: u32) -> Self {
+        ProcessError::UnexpectedPduType(UnexpectedPduType {
+            command_id,
+            sequence_number,
+        })
     }
 }
 
@@ -133,18 +137,15 @@ async fn process(
         match pdu {
             Ok(pdu) => {
                 if let Some(pdu) = pdu {
+                    let sequence_number = pdu.sequence_number.value;
                     match handle_pdu(pdu, config).await {
                         Ok(response) => connection.write_pdu(&response).await?,
                         Err(e) => {
                             // Couldn't handle this PDU type.  Send a nack...
                             connection
-                                .write_pdu(&Pdu::GenericNack(
-                                    GenericNackPdu::new(
-                                        ERROR_STATUS_UNEXPECTED_PDU_TYPE,
-                                        0, // Issue#1: all pdus should have a
-                                           // sequence_number, and we should
-                                           // use it here: pdu.sequence_number
-                                    ),
+                                .write_pdu(&Pdu::new_generic_nack_error(
+                                    ERROR_STATUS_UNEXPECTED_PDU_TYPE,
+                                    sequence_number,
                                 ))
                                 .await?;
                             // ...and Drop the connection.
@@ -169,21 +170,22 @@ async fn process(
 }
 
 fn handle_pdu_parse_error(error: &PduParseError) -> Pdu {
+    let sequence_number = error.sequence_number.unwrap_or(0);
     match error.command_id {
         Some(0x00000002) => {
-            // Parsing failed, so we don't know the sequence number
-            Pdu::BindTransmitterResp(BindTransmitterRespPdu::new_failure(0))
+            // TODO: take error status from a list somewhere
+            Pdu::new_bind_transmitter_resp_error(0x00000001, sequence_number)
         }
         // For any PDU type we're not set up for, send generic_nack
-        Some(_) => Pdu::GenericNack(GenericNackPdu::new(
+        Some(_) => Pdu::new_generic_nack_error(
             ERROR_STATUS_FAILED_TO_PARSE_OTHER_PDU,
-            0,
-        )),
+            sequence_number,
+        ),
         // If we don't even know the PDU type, send generic_nack
-        None => Pdu::GenericNack(GenericNackPdu::new(
+        None => Pdu::new_generic_nack_error(
             ERROR_STATUS_PDU_HEADER_INVALID,
-            0,
-        )),
+            sequence_number,
+        ),
     }
 }
 
@@ -192,15 +194,16 @@ async fn handle_pdu(
     config: &SmscConfig,
 ) -> Result<Pdu, ProcessError> {
     info!("<= {:?}", pdu);
-    match pdu {
-        Pdu::BindTransmitter(pdu) => {
-            Ok(Pdu::BindTransmitterResp(BindTransmitterRespPdu::new(
-                pdu.sequence_number.value,
-                &config.system_id,
-            )?))
-        }
-        // Issue#1: all pdus should have a command id: Some(pdu.command_id)
-        _ => Err(ProcessError::new_unexpected_pdu_type()),
+    match pdu.body {
+        PduBody::BindTransmitter(_body) => Pdu::new_bind_transmitter_resp(
+            pdu.sequence_number.value,
+            &config.system_id,
+        )
+        .map_err(|e| e.into()),
+        _ => Err(ProcessError::new_unexpected_pdu_type(
+            pdu.command_id.value,
+            pdu.sequence_number.value,
+        )),
     }
 }
 
@@ -227,9 +230,8 @@ impl SmppConnection {
                 if self.buffer.is_empty() {
                     return Ok(None);
                 } else {
-                    // It might be better here to create a separate error type
-                    return Err(PduParseError::for_ioerror(
-                        io::ErrorKind::ConnectionReset.into(),
+                    return Err(PduParseError::new(
+                        PduParseErrorBody::NotEnoughBytes,
                     ));
                 }
             }

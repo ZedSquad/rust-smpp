@@ -1,37 +1,27 @@
 use std::io;
 
-use crate::pdu::formats::{Integer4, WriteStream};
+use crate::pdu::formats::WriteStream;
 use crate::pdu::PduParseError;
 
 pub const GENERIC_NACK: u32 = 0x80000000;
 
+// TODO: no need for this struct at all?
 #[derive(Debug, PartialEq)]
-pub struct GenericNackPdu {
-    command_status: Integer4,
-    sequence_number: Integer4,
-}
+pub struct GenericNackPdu {}
 
 impl GenericNackPdu {
-    pub fn new(command_status: u32, sequence_number: u32) -> Self {
-        Self {
-            command_status: Integer4::new(command_status),
-            sequence_number: Integer4::new(sequence_number),
-        }
+    pub fn new_error() -> Self {
+        Self {}
     }
 
-    pub async fn write(&self, stream: &mut WriteStream) -> io::Result<()> {
-        let command_length = Integer4::new(16);
-        let command_id = Integer4::new(GENERIC_NACK);
-
-        command_length.write(stream).await?;
-        command_id.write(stream).await?;
-        self.command_status.write(stream).await?;
-        self.sequence_number.write(stream).await?;
-
+    pub async fn write(&self, _stream: &mut WriteStream) -> io::Result<()> {
         Ok(())
     }
 
-    pub fn parse(_bytes: &mut dyn io::BufRead) -> Result<Self, PduParseError> {
+    pub fn parse(
+        _bytes: &mut dyn io::BufRead,
+        _command_status: u32,
+    ) -> Result<Self, PduParseError> {
         todo!("GenericNackPdu::parse");
     }
 }

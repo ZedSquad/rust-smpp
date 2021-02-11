@@ -1,10 +1,10 @@
 use std::io;
 
-use crate::pdu::formats::{
-    COctetString, Integer1, Integer4, OctetString, WriteStream,
-};
+use crate::pdu::formats::{COctetString, Integer1, OctetString, WriteStream};
 use crate::pdu::pduparseerror::fld;
-use crate::pdu::PduParseError;
+use crate::pdu::{PduParseError, PduParseErrorBody};
+
+pub const SUBMIT_SM: u32 = 0x00000004;
 
 const MAX_LENGTH_SERVICE_TYPE: usize = 6;
 const MAX_LENGTH_SOURCE_ADDR: usize = 21;
@@ -15,7 +15,6 @@ const MAX_LENGTH_SHORT_MESSAGE: usize = 254;
 
 #[derive(Debug, PartialEq)]
 pub struct SubmitSmPdu {
-    pub sequence_number: Integer4,
     service_type: COctetString,
     source_addr_ton: Integer1,
     source_addr_npi: Integer1,
@@ -45,17 +44,16 @@ fn validate_length_1_or_17(
     if length == 0 || length == 16 {
         Ok(())
     } else {
-        Err(PduParseError::for_incorrect_length(
+        Err(PduParseError::new(PduParseErrorBody::IncorrectLength(
             length as u32,
-            "Must be either 1 or 17 characters, including the NULL character.",
-        )
+            String::from("Must be either 1 or 17 characters, including the NULL character."),
+        ))
         .into_with_field_name(field_name))
     }
 }
 
 impl SubmitSmPdu {
     pub fn new(
-        sequence_number: u32,
         service_type: &str,
         source_addr_ton: u8,
         source_addr_npi: u8,
@@ -81,7 +79,6 @@ impl SubmitSmPdu {
         validate_length_1_or_17("validity_period", validity_period.len())?;
 
         Ok(Self {
-            sequence_number: Integer4::new(sequence_number),
             service_type: COctetString::from_str(
                 service_type,
                 MAX_LENGTH_SERVICE_TYPE,
@@ -132,9 +129,13 @@ impl SubmitSmPdu {
 
     pub fn parse(
         bytes: &mut dyn io::BufRead,
+        command_status: u32,
     ) -> Result<SubmitSmPdu, PduParseError> {
-        let command_status = fld("command_status", Integer4::read(bytes))?;
-        let sequence_number = fld("sequence_number", Integer4::read(bytes))?;
+        if command_status != 0x00000000 {
+            return Err(PduParseError::new(PduParseErrorBody::StatusIsNotZero)
+                .into_with_field_name("command_status"));
+        }
+
         let service_type = fld(
             "service_type",
             COctetString::read(bytes, MAX_LENGTH_SERVICE_TYPE),
@@ -179,13 +180,6 @@ impl SubmitSmPdu {
             ),
         )?;
 
-        if command_status.value != 0x00 {
-            return Err(PduParseError::for_statusisnotzero(
-                command_status.value,
-            )
-            .into_with_field_name("command_status"));
-        }
-
         validate_length_1_or_17(
             "schedule_delivery_time",
             schedule_delivery_time.value.len(),
@@ -197,7 +191,6 @@ impl SubmitSmPdu {
         // Issue#2: check EITHER short_message, or message_payload TLV
 
         Ok(Self {
-            sequence_number,
             service_type,
             source_addr_ton,
             source_addr_npi,

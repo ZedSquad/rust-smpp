@@ -36,11 +36,9 @@ fn when_we_receive_a_bad_pdu_we_respond_with_failure_resp_pdu() {
     //                                                          non-ascii  ^^^^
 
     const RESP: &[u8; 0x10] =
-        b"\x00\x00\x00\x10\x80\x00\x00\x02\x00\x00\x00\x01\x00\x00\x00\x00";
+        b"\x00\x00\x00\x10\x80\x00\x00\x02\x00\x00\x00\x01\x00\x00\x00\x14";
     //                                          error ^^^^        seq ^^^^
     // Note: no body part because this is an error response
-
-    // Issue#1: sequence_number could be copied into error here
 
     // Given an SMSC
     let server = TestServer::start().unwrap();
@@ -106,7 +104,7 @@ fn when_sent_bad_pdu_header_we_respond_generic_nack() {
 #[test]
 fn when_we_receive_wrong_type_of_pdu_we_respond_generic_nack() {
     const RESP: &[u8; 0x10] =
-        b"\x00\x00\x00\x10\x80\x00\x00\x00\x00\x01\x00\x03\x00\x00\x00\x00";
+        b"\x00\x00\x00\x10\x80\x00\x00\x00\x00\x01\x00\x03\x00\x00\x00\x02";
     //       generic_nack ^^^^^^^^^^^^^^^^      error ^^^^        seq ^^^^
 
     // Given an SMSC
@@ -137,7 +135,7 @@ fn when_we_receive_nontlv_pdu_with_too_long_length_return_an_error() {
     //            ^^^^^^^^ length longer than content
 
     const RESP: &[u8; 0x10] =
-        b"\x00\x00\x00\x10\x80\x00\x00\x02\x00\x00\x00\x01\x00\x00\x00\x00";
+        b"\x00\x00\x00\x10\x80\x00\x00\x02\x00\x00\x00\x01\x00\x00\x00\x02";
     //          bind_transmitter_resp ^^^^
 
     // Issue#1: sequence_number could be copied into error here
@@ -212,10 +210,8 @@ fn when_receive_pdu_with_short_length_but_long_string_we_respond_with_error() {
     const END: &[u8; 0x0a] = b"\0pd\0t\0\x34\x00\x00\0";
 
     const RESP: &[u8; 0x10] =
-        b"\x00\x00\x00\x10\x80\x00\x00\x02\x00\x00\x00\x01\x00\x00\x00\x00";
+        b"\x00\x00\x00\x10\x80\x00\x00\x02\x00\x00\x00\x01\x00\x00\x00\x02";
     //          bind_transmitter_resp ^^^^
-
-    // Issue#1: sequence_number could be copied into error here
 
     // Our PDU will contain 100,000 letter 'e's within a COctetString
     let mut many_bytes: Vec<u8> = vec![];

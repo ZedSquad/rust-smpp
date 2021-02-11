@@ -11,7 +11,7 @@ use super::CheckError;
 
 #[derive(Debug)]
 pub enum PduParseErrorBody {
-    BodyNotAllowedWhenStatusIsNotZero(u32),
+    BodyNotAllowedWhenStatusIsNotZero,
     LengthLongerThanPdu(u32),
     LengthTooLong(u32),
     LengthTooShort(u32),
@@ -19,108 +19,39 @@ pub enum PduParseErrorBody {
     NotEnoughBytes,
     OctetStringCreationError(OctetStringCreationError),
     OtherIoError(io::Error),
-    StatusIsNotZero(u32),
+    StatusIsNotZero,
     UnknownCommandId,
 }
 
 #[derive(Debug)]
 pub struct PduParseError {
     pub command_id: Option<u32>,
-    sequence_number: Option<u32>, // Issue#1: populate and use this
+    command_status: Option<u32>,
+    pub sequence_number: Option<u32>,
     field_name: Option<String>,
     body: PduParseErrorBody,
 }
 
 impl PduParseError {
-    pub fn for_unknown_command_id(command_id: u32) -> Self {
+    pub fn new(body: PduParseErrorBody) -> Self {
         Self {
-            command_id: Some(command_id),
+            command_id: None,
+            command_status: None,
             sequence_number: None,
             field_name: None,
-            body: PduParseErrorBody::UnknownCommandId,
+            body,
         }
     }
 
-    pub fn for_lengthlongerthanpdu(
-        command_id: u32,
-        command_length: u32,
+    pub fn into_with_header(
+        mut self,
+        command_id: Option<u32>,
+        command_status: Option<u32>,
+        sequence_number: Option<u32>,
     ) -> Self {
-        Self {
-            command_id: Some(command_id),
-            sequence_number: None,
-            field_name: None,
-            body: PduParseErrorBody::LengthLongerThanPdu(command_length),
-        }
-    }
-
-    pub fn for_statusisnotzero(status: u32) -> Self {
-        Self {
-            command_id: None,
-            sequence_number: None,
-            field_name: None,
-            body: PduParseErrorBody::StatusIsNotZero(status),
-        }
-    }
-
-    pub fn for_lengthtoolong(length: u32) -> Self {
-        Self {
-            command_id: None,
-            sequence_number: None,
-            field_name: None,
-            body: PduParseErrorBody::LengthTooLong(length),
-        }
-    }
-
-    pub fn for_lengthtooshort(length: u32) -> Self {
-        Self {
-            command_id: None,
-            sequence_number: None,
-            field_name: None,
-            body: PduParseErrorBody::LengthTooShort(length),
-        }
-    }
-
-    pub fn for_incorrect_length(length: u32, message: &str) -> Self {
-        Self {
-            command_id: None,
-            sequence_number: None,
-            field_name: None,
-            body: PduParseErrorBody::IncorrectLength(
-                length,
-                String::from(message),
-            ),
-        }
-    }
-
-    pub fn for_bodynotallowedwhenstatusisnotzero(status: u32) -> Self {
-        Self {
-            command_id: None,
-            sequence_number: None,
-            field_name: None,
-            body: PduParseErrorBody::BodyNotAllowedWhenStatusIsNotZero(status),
-        }
-    }
-
-    pub fn for_ioerror(e: io::Error) -> Self {
-        match e.kind() {
-            io::ErrorKind::UnexpectedEof => Self {
-                command_id: None,
-                sequence_number: None,
-                field_name: None,
-                body: PduParseErrorBody::NotEnoughBytes,
-            },
-
-            _ => Self {
-                command_id: None,
-                sequence_number: None,
-                field_name: None,
-                body: PduParseErrorBody::OtherIoError(e),
-            },
-        }
-    }
-
-    pub fn into_with_command_id(mut self, command_id: u32) -> Self {
-        self.command_id = Some(command_id);
+        self.command_id = command_id;
+        self.command_status = command_status;
+        self.sequence_number = sequence_number;
         self
     }
 
@@ -132,12 +63,7 @@ impl PduParseError {
 
 impl From<OctetStringCreationError> for PduParseError {
     fn from(e: OctetStringCreationError) -> Self {
-        Self {
-            command_id: None,
-            sequence_number: None,
-            field_name: None,
-            body: PduParseErrorBody::OctetStringCreationError(e),
-        }
+        Self::new(PduParseErrorBody::OctetStringCreationError(e))
     }
 }
 
@@ -154,10 +80,10 @@ impl From<CommandLengthError> for PduParseError {
     fn from(e: CommandLengthError) -> Self {
         match e {
             CommandLengthError::TooLong(length) => {
-                PduParseError::for_lengthtoolong(length)
+                Self::new(PduParseErrorBody::LengthTooLong(length))
             }
             CommandLengthError::TooShort(length) => {
-                PduParseError::for_lengthtooshort(length)
+                Self::new(PduParseErrorBody::LengthTooShort(length))
             }
         }
     }
@@ -166,25 +92,12 @@ impl From<CommandLengthError> for PduParseError {
 impl From<io::Error> for PduParseError {
     fn from(e: io::Error) -> Self {
         match e.kind() {
-            io::ErrorKind::UnexpectedEof => Self {
-                command_id: None,
-                sequence_number: None,
-                field_name: None,
-                body: PduParseErrorBody::NotEnoughBytes,
-            },
-            _ => Self {
-                command_id: None,
-                sequence_number: None,
-                field_name: None,
-                body: PduParseErrorBody::OtherIoError(e),
-            },
+            io::ErrorKind::UnexpectedEof => {
+                Self::new(PduParseErrorBody::NotEnoughBytes)
+            }
+            _ => Self::new(PduParseErrorBody::OtherIoError(e)),
         }
     }
-}
-
-fn as_hex(num: Option<u32>) -> String {
-    num.map(|i| format!("{:#010X}", i))
-        .unwrap_or(String::from("UNKNOWN"))
 }
 
 impl Display for PduParseError {
@@ -193,11 +106,11 @@ impl Display for PduParseError {
         formatter: &mut Formatter,
     ) -> std::result::Result<(), std::fmt::Error> {
         let msg = match &self.body {
-            PduParseErrorBody::BodyNotAllowedWhenStatusIsNotZero(status) => {
+            PduParseErrorBody::BodyNotAllowedWhenStatusIsNotZero => {
                 format!(
                     "PDU body must not be supplied when status is not zero, \
                     but command_status is {}.",
-                    status
+                    as_hex(self.command_status)
                 )
             }
             PduParseErrorBody::IncorrectLength(length, message) => {
@@ -224,8 +137,11 @@ impl Display for PduParseError {
             PduParseErrorBody::OtherIoError(e) => {
                 format!("IO error: {}", e.to_string())
             }
-            PduParseErrorBody::StatusIsNotZero(status) => {
-                format!("command_status must be 0, but was {}.", status)
+            PduParseErrorBody::StatusIsNotZero => {
+                format!(
+                    "command_status must be 0, but was {}.",
+                    as_hex(self.command_status)
+                )
             }
             PduParseErrorBody::UnknownCommandId => {
                 String::from("Supplied command_id is unknown.")
@@ -233,11 +149,12 @@ impl Display for PduParseError {
         };
 
         formatter.write_fmt(format_args!(
-            "Error parsing PDU (command_id={}, field_name={}): {}",
-            // Issue#1: Should be: "Error parsing PDU
-            // (command_id={}, sequence_number={}, field_name={}): {}",
+            "Error parsing PDU (\
+            command_id={}, command_status={}, \
+            sequence_number={}, field_name={}): {}",
             as_hex(self.command_id),
-            // Issue#1: Should be: as_hex(self.sequence_number),
+            as_hex(self.command_status),
+            as_hex(self.sequence_number),
             self.field_name.clone().unwrap_or(String::from("UNKNOWN")),
             msg,
         ))
@@ -245,6 +162,14 @@ impl Display for PduParseError {
 }
 
 impl error::Error for PduParseError {}
+
+fn as_hex(num: Option<u32>) -> String {
+    if let Some(num) = num {
+        format!("{:#010X}", num)
+    } else {
+        String::from("UNKNOWN")
+    }
+}
 
 /// If the supplied result is an error, enrich it with the supplied field name
 pub fn fld<T, E>(
@@ -263,8 +188,16 @@ mod tests {
     #[test]
     fn formatting_unknown_command_id() {
         assert_eq!(
-            PduParseError::for_unknown_command_id(0x00001234).to_string(),
-            "Error parsing PDU (command_id=0x00001234, field_name=UNKNOWN): \
+            PduParseError::new(PduParseErrorBody::UnknownCommandId)
+                .into_with_header(
+                    Some(0x00001234),
+                    Some(0x00000000),
+                    Some(0x0004321)
+                )
+                .to_string(),
+            "Error parsing PDU (\
+            command_id=0x00001234, command_status=0x00000000, \
+            sequence_number=0x00004321, field_name=UNKNOWN): \
             Supplied command_id is unknown."
         );
     }

@@ -12,8 +12,8 @@ pub use operations::bind_transmitter_resp::BindTransmitterRespPdu;
 pub use operations::generic_nack::GenericNackPdu;
 pub use operations::submit_sm::SubmitSmPdu;
 pub use operations::submit_sm_resp::SubmitSmRespPdu;
-pub use pdu::Pdu;
-pub use pduparseerror::PduParseError;
+pub use pdu::{Pdu, PduBody};
+pub use pduparseerror::{PduParseError, PduParseErrorBody};
 pub use validate_command_length::{
     CommandLengthError, MAX_PDU_LENGTH, MIN_PDU_LENGTH,
 };

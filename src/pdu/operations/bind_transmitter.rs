@@ -1,8 +1,10 @@
 use std::io;
 
-use crate::pdu::formats::{COctetString, Integer1, Integer4, WriteStream};
+use crate::pdu::formats::{COctetString, Integer1, WriteStream};
 use crate::pdu::pduparseerror::fld;
-use crate::pdu::PduParseError;
+use crate::pdu::{PduParseError, PduParseErrorBody};
+
+pub const BIND_TRANSMITTER: u32 = 0x00000002;
 
 const MAX_LENGTH_SYSTEM_ID: usize = 16;
 const MAX_LENGTH_PASSWORD: usize = 9;
@@ -11,7 +13,6 @@ const MAX_LENGTH_ADDRESS_RANGE: usize = 41;
 
 #[derive(Debug, PartialEq)]
 pub struct BindTransmitterPdu {
-    pub sequence_number: Integer4,
     system_id: COctetString,
     password: COctetString,
     system_type: COctetString,
@@ -23,7 +24,6 @@ pub struct BindTransmitterPdu {
 
 impl BindTransmitterPdu {
     pub fn new(
-        sequence_number: u32,
         system_id: &str,
         password: &str,
         system_type: &str,
@@ -33,7 +33,6 @@ impl BindTransmitterPdu {
         address_range: &str,
     ) -> Result<Self, PduParseError> {
         Ok(Self {
-            sequence_number: Integer4::new(sequence_number),
             system_id: fld(
                 "system_id",
                 COctetString::from_str(system_id, MAX_LENGTH_SYSTEM_ID),
@@ -62,9 +61,8 @@ impl BindTransmitterPdu {
 
     pub fn parse(
         bytes: &mut dyn io::BufRead,
+        command_status: u32,
     ) -> Result<BindTransmitterPdu, PduParseError> {
-        let command_status = fld("command_status", Integer4::read(bytes))?;
-        let sequence_number = fld("sequence_number", Integer4::read(bytes))?;
         let system_id =
             fld("system_id", COctetString::read(bytes, MAX_LENGTH_SYSTEM_ID))?;
         let password =
@@ -82,17 +80,14 @@ impl BindTransmitterPdu {
             COctetString::read(bytes, MAX_LENGTH_ADDRESS_RANGE),
         )?;
 
-        if command_status.value != 0x00 {
+        if command_status != 0x00000000 {
             // TODO: FieldlessPduParseError type, that gets converted to a real
             //       PduParseError by optionally annotating it with a field_name.
-            return Err(PduParseError::for_statusisnotzero(
-                command_status.value,
-            )
-            .into_with_field_name("command_status"));
+            return Err(PduParseError::new(PduParseErrorBody::StatusIsNotZero)
+                .into_with_field_name("command_status"));
         }
 
         Ok(BindTransmitterPdu {
-            sequence_number,
             system_id,
             password,
             system_type,
