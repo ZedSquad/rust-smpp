@@ -213,7 +213,6 @@ pub fn parse_body(
     command_status: u32,
 ) -> Result<PduBody, PduParseError> {
     match command_id {
-        // TODO: has to be literals here, so only use them here and nearby
         0x00000002 => BindTransmitterPdu::parse(bytes, command_status)
             .map(|p| PduBody::BindTransmitter(p)),
         0x80000002 => BindTransmitterRespPdu::parse(bytes, command_status)
@@ -295,7 +294,6 @@ mod tests {
 
     #[test]
     fn parse_bind_transmitter_with_too_long_system_id() {
-        // TODO: wrap lines
         const PDU: &[u8; 0x29] =
             b"\x00\x00\x00\x29\x00\x00\x00\x02\x00\x00\x00\x00\x01\x02\x03\x44\
             ABDEFABCDEFABCDEFA\0\0\0\x34\x13\x50\0";

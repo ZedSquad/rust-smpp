@@ -3,7 +3,6 @@ use std::io;
 use crate::pdu::formats::WriteStream;
 use crate::pdu::{PduParseError, PduParseErrorBody};
 
-// TODO: no need for this struct at all?
 #[derive(Debug, PartialEq)]
 pub struct GenericNackPdu {}
 
