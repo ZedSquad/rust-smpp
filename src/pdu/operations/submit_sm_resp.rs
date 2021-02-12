@@ -65,7 +65,8 @@ impl SubmitSmRespPdu {
         self,
         command_status: u32,
     ) -> Result<Self, PduParseError> {
-        // TODO: This is identical to the code in BindTransmitterRespPdu
+        // This is identical to the code in BindTransmitterRespPdu.  If
+        // we get more examples, we should probably share the code somewhere.
         match (&self.message_id, command_status) {
             (Some(_), 0) => Ok(self),
             (None, 0) => Err(PduParseError::new(
