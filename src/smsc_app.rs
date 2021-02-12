@@ -171,7 +171,7 @@ async fn process(
 }
 
 fn handle_pdu_parse_error(error: &PduParseError) -> Pdu {
-    let sequence_number = error.sequence_number.unwrap_or(0);
+    let sequence_number = error.sequence_number.unwrap_or(1);
     match error.command_id {
         Some(0x00000002) => Pdu::new(
             error.status(),

@@ -102,6 +102,7 @@ impl Pdu {
         sequence_number: u32,
         body: PduBody,
     ) -> Result<Self, PduParseError> {
+        validate_sequence_number(sequence_number)?;
         Ok(Self {
             command_status: Integer4::new(command_status),
             sequence_number: Integer4::new(sequence_number),
@@ -131,6 +132,14 @@ impl Pdu {
             )?;
 
         validate_command_length(&command_length).map_err(|e| {
+            PduParseError::from(e).into_with_header(
+                Some(command_id.value),
+                Some(command_status.value),
+                Some(sequence_number.value),
+            )
+        })?;
+
+        validate_sequence_number(sequence_number.value).map_err(|e| {
             PduParseError::from(e).into_with_header(
                 Some(command_id.value),
                 Some(command_status.value),
@@ -239,6 +248,14 @@ fn hfld(
             PduParseError::from(e).into_with_field_name(field_name)
         }
     })
+}
+
+fn validate_sequence_number(sequence_number: u32) -> Result<(), PduParseError> {
+    if sequence_number < 0x00000001 || sequence_number > 0x7fffffff {
+        Err(PduParseError::new(PduParseErrorBody::InvalidSequenceNumber))
+    } else {
+        Ok(())
+    }
 }
 
 #[cfg(test)]
@@ -642,6 +659,44 @@ mod tests {
             sequence_number=0x00000004, field_name=UNKNOWN): \
             PDU body must not be supplied when status is not zero, but \
             command_status is 0x00000007.",
+        );
+    }
+
+    #[test]
+    fn parsepdu_resp_error_with_zero_sequence_number_is_an_error() {
+        const PDU: &[u8; 0x10] = b"\
+            \x00\x00\x00\x10\
+            \x80\x00\x00\x00\
+            \x00\x00\x00\x00\
+            \x00\x00\x00\x00";
+
+        let mut cursor = Cursor::new(&PDU[..]);
+        assert_eq!(
+            Pdu::parse(&mut cursor).unwrap_err().to_string(),
+            "Error parsing PDU (\
+            command_id=0x80000000, command_status=0x00000000, \
+            sequence_number=0x00000000, field_name=UNKNOWN): \
+            Sequence number 0x00000000 is not allowed: \
+            must be 0x00000001 to 0x7FFFFFFF.",
+        );
+    }
+
+    #[test]
+    fn parsepdu_resp_error_with_too_large_sequence_number_is_an_error() {
+        const PDU: &[u8; 0x10] = b"\
+            \x00\x00\x00\x10\
+            \x80\x00\x00\x00\
+            \x00\x00\x00\x00\
+            \xf0\x00\x00\x00";
+
+        let mut cursor = Cursor::new(&PDU[..]);
+        assert_eq!(
+            Pdu::parse(&mut cursor).unwrap_err().to_string(),
+            "Error parsing PDU (\
+            command_id=0x80000000, command_status=0x00000000, \
+            sequence_number=0xF0000000, field_name=UNKNOWN): \
+            Sequence number 0xF0000000 is not allowed: \
+            must be 0x00000001 to 0x7FFFFFFF.",
         );
     }
 

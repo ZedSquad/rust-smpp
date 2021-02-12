@@ -17,6 +17,7 @@ pub enum PduParseErrorBody {
     LengthTooLong(u32),
     LengthTooShort(u32),
     IncorrectLength(u32, String),
+    InvalidSequenceNumber,
     NotEnoughBytes,
     OctetStringCreationError(OctetStringCreationError),
     OtherIoError(io::Error),
@@ -136,6 +137,13 @@ impl Display for PduParseError {
             ),
             PduParseErrorBody::IncorrectLength(length, message) => {
                 format!("Length {} was incorrect: {}", length, message)
+            }
+            PduParseErrorBody::InvalidSequenceNumber => {
+                format!(
+                    "Sequence number {} is not allowed: \
+                    must be 0x00000001 to 0x7FFFFFFF.",
+                    as_hex(self.sequence_number)
+                )
             }
             PduParseErrorBody::LengthLongerThanPdu(length) => format!(
                 "Finished parsing PDU but its length ({}) suggested \

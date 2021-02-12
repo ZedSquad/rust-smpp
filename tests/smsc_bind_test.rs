@@ -83,7 +83,7 @@ fn when_sent_bad_pdu_header_we_respond_generic_nack() {
     //                        length is 1! ^^^^
 
     const RESP: &[u8; 0x10] =
-        b"\x00\x00\x00\x10\x80\x00\x00\x00\x00\x00\x00\x02\x00\x00\x00\x00";
+        b"\x00\x00\x00\x10\x80\x00\x00\x00\x00\x00\x00\x02\x00\x00\x00\x01";
     //       generic_nack ^^^^        invalid cmd len ^^^^        seq ^^^^
 
     // Given an SMSC
@@ -176,7 +176,7 @@ fn when_we_receive_a_pdu_with_very_long_length_we_respond_generic_nack() {
     // very long length
 
     const RESP: &[u8; 0x10] =
-        b"\x00\x00\x00\x10\x80\x00\x00\x00\x00\x00\x00\x02\x00\x00\x00\x00";
+        b"\x00\x00\x00\x10\x80\x00\x00\x00\x00\x00\x00\x02\x00\x00\x00\x01";
     //       generic_nack ^^^^        cmd len invalid ^^^^        seq ^^^^
 
     // Note: we don't provide the correct sequence number here: we could, but
