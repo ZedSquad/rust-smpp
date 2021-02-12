@@ -1,5 +1,5 @@
 use once_cell::sync::Lazy;
-use std::io::ErrorKind;
+use std::io;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::TcpStream;
@@ -91,22 +91,28 @@ impl TestClient {
     }
 
     #[allow(dead_code)]
-    pub async fn read_n(&mut self, n: usize) -> Vec<u8> {
+    pub async fn read_n_maybe(
+        &mut self,
+        n: usize,
+    ) -> Result<Vec<u8>, io::Error> {
         let mut bytes: Vec<u8> = Vec::with_capacity(n);
 
         while bytes.len() < n {
-            match self.stream.read_u8().await {
-                Ok(byte) => bytes.push(byte),
-                Err(e) => {
-                    if e.kind() == ErrorKind::UnexpectedEof {
-                        panic!("Error: Not enough bytes to read.");
-                    } else {
-                        panic!("Error while reading: {}", e);
-                    }
-                }
-            }
+            bytes.push(self.stream.read_u8().await?)
         }
-        bytes
+        Ok(bytes)
+    }
+
+    #[allow(dead_code)]
+    pub async fn read_n(&mut self, n: usize) -> Vec<u8> {
+        self.read_n_maybe(n)
+            .await
+            .unwrap_or_else(|e| match e.kind() {
+                io::ErrorKind::UnexpectedEof => {
+                    panic!("Error: Not enough bytes to read.")
+                }
+                _ => panic!("Error while reading: {}", e),
+            })
     }
 }
 

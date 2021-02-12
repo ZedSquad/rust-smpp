@@ -1,3 +1,4 @@
+use std::io;
 use std::iter;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 
@@ -183,12 +184,11 @@ fn when_we_receive_a_pdu_with_very_long_length_we_respond_generic_nack() {
     // PDU length.  Since a huge length is likely to indicate a catastrophic
     // error, or malicious traffic, we are not too bothered.
 
-    // TODO: this test becomes flakey if I say take(0x00ffffff) as I should.
     let many_bytes: Vec<u8> = PDU
         .iter()
         .copied()
         .chain(iter::repeat(0x00))
-        .take(0x0000ffff)
+        .take(0x00ffffff)
         .collect();
 
     // Given an SMSC
@@ -198,16 +198,23 @@ fn when_we_receive_a_pdu_with_very_long_length_we_respond_generic_nack() {
         let mut client = TestClient::connect_to(&server).await.unwrap();
         client.stream.write(&many_bytes).await.unwrap();
 
-        // Then SMSC responds with an error
-        let resp = client.read_n(RESP.len()).await;
-        assert_eq!(s(&resp), s(RESP));
+        // Then SMSC either ...
+        let resp = client.read_n_maybe(RESP.len()).await;
 
-        // And then drops the connection
-        let resp = client.stream.read_u8().await.unwrap_err();
-        assert_eq!(
-            &resp.to_string(),
-            "Connection reset by peer (os error 104)"
-        );
+        match resp {
+            // responds with an error then drops the connection
+            Ok(resp) => {
+                assert_eq!(s(&resp), s(RESP));
+                assert_eq!(
+                    client.stream.read_u8().await.unwrap_err().kind(),
+                    io::ErrorKind::ConnectionReset
+                );
+            }
+            // or drops the connection immediately
+            Err(e) => {
+                assert_eq!(e.kind(), io::ErrorKind::ConnectionReset);
+            }
+        }
     })
 }
 
