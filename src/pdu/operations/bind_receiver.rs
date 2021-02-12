@@ -5,9 +5,9 @@ use crate::pdu::formats::WriteStream;
 use crate::pdu::PduParseError;
 
 #[derive(Debug, PartialEq)]
-pub struct BindTransmitterPdu(BindData);
+pub struct BindReceiverPdu(BindData);
 
-impl BindTransmitterPdu {
+impl BindReceiverPdu {
     pub fn new(
         system_id: &str,
         password: &str,

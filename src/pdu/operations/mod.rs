@@ -1,5 +1,11 @@
+pub mod bind_receiver;
+pub mod bind_receiver_resp;
+pub mod bind_transceiver;
+pub mod bind_transceiver_resp;
 pub mod bind_transmitter;
 pub mod bind_transmitter_resp;
+pub mod enquire_link;
+pub mod enquire_link_resp;
 pub mod generic_nack;
 pub mod submit_sm;
 pub mod submit_sm_resp;

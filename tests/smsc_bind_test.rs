@@ -31,6 +31,27 @@ fn when_we_receive_bind_transmitter_we_respond_with_resp() {
 }
 
 #[test]
+fn when_we_receive_enquire_link_we_respond_with_resp() {
+    pub const ENQUIRE_LINK: &[u8; 0x10] =
+        b"\x00\x00\x00\x10\x00\x00\x00\x15\x00\x00\x00\x00\x00\x00\x00\x12";
+
+    pub const ENQUIRE_LINK_RESP: &[u8; 0x10] =
+        b"\x00\x00\x00\x10\x80\x00\x00\x15\x00\x00\x00\x00\x00\x00\x00\x12";
+
+    // Given an SMSC
+    let server = TestServer::start().unwrap();
+    server.runtime.block_on(async {
+        // When ESME enquires
+        let mut client = TestClient::connect_to(&server).await.unwrap();
+        client.stream.write(ENQUIRE_LINK).await.unwrap();
+
+        // Then SMSC responds, with the same sequence number
+        let resp = client.read_n(ENQUIRE_LINK_RESP.len()).await;
+        assert_eq!(s(&resp), s(ENQUIRE_LINK_RESP));
+    })
+}
+
+#[test]
 fn when_we_receive_a_bad_pdu_we_respond_with_failure_resp_pdu() {
     const PDU: &[u8; 0x29] =
         b"\x00\x00\x00\x29\x00\x00\x00\x02\x00\x00\x00\x00\x00\x00\x00\x14\

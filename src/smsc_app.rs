@@ -11,8 +11,8 @@ use tokio::net::{TcpListener, TcpStream};
 use tokio::sync::{Semaphore, TryAcquireError};
 
 use crate::pdu::{
-    CheckOutcome, GenericNackPdu, Pdu, PduBody, PduParseError,
-    PduParseErrorBody, PduStatus,
+    CheckOutcome, EnquireLinkRespPdu, GenericNackPdu, Pdu, PduBody,
+    PduParseError, PduParseErrorBody, PduStatus,
 };
 use crate::smsc_config::SmscConfig;
 use crate::{async_result::AsyncResult, pdu::BindTransmitterRespPdu};
@@ -136,7 +136,10 @@ async fn process(
                 if let Some(pdu) = pdu {
                     let sequence_number = pdu.sequence_number.value;
                     match handle_pdu(pdu, config).await {
-                        Ok(response) => connection.write_pdu(&response).await?,
+                        Ok(response) => {
+                            info!("=> {:?}", response);
+                            connection.write_pdu(&response).await?
+                        }
                         Err(e) => {
                             // Couldn't handle this PDU type.  Send a nack...
                             connection
@@ -210,6 +213,14 @@ async fn handle_pdu(
                 .into(),
         )
         .map_err(|e| e.into()),
+
+        PduBody::EnquireLink(_body) => Pdu::new(
+            PduStatus::ESME_ROK as u32,
+            pdu.sequence_number.value,
+            EnquireLinkRespPdu::new().into(),
+        )
+        .map_err(|e| e.into()),
+
         _ => Err(ProcessError::new_unexpected_pdu_type(
             pdu.command_id().value,
             pdu.sequence_number.value,

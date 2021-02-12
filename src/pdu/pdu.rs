@@ -6,9 +6,11 @@ use tokio::io::AsyncWriteExt;
 use crate::pdu::formats::{Integer4, WriteStream};
 use crate::pdu::validate_command_length::validate_command_length;
 use crate::pdu::{
-    check, BindTransmitterPdu, BindTransmitterRespPdu, CheckError,
-    CheckOutcome, GenericNackPdu, PduParseError, PduParseErrorBody,
-    SubmitSmPdu, SubmitSmRespPdu,
+    check, BindReceiverPdu, BindReceiverRespPdu, BindTransceiverPdu,
+    BindTransceiverRespPdu, BindTransmitterPdu, BindTransmitterRespPdu,
+    CheckError, CheckOutcome, EnquireLinkPdu, EnquireLinkRespPdu,
+    GenericNackPdu, PduParseError, PduParseErrorBody, SubmitSmPdu,
+    SubmitSmRespPdu,
 };
 
 // It will be worth considering later whether the reading/writing code
@@ -17,8 +19,14 @@ use crate::pdu::{
 
 #[derive(Debug, PartialEq)]
 pub enum PduBody {
+    BindReceiver(BindReceiverPdu),
+    BindReceiverResp(BindReceiverRespPdu),
+    BindTransceiver(BindTransceiverPdu),
+    BindTransceiverResp(BindTransceiverRespPdu),
     BindTransmitter(BindTransmitterPdu),
     BindTransmitterResp(BindTransmitterRespPdu),
+    EnquireLink(EnquireLinkPdu),
+    EnquireLinkResp(EnquireLinkRespPdu),
     GenericNack(GenericNackPdu),
     SubmitSm(SubmitSmPdu),
     SubmitSmResp(SubmitSmRespPdu),
@@ -38,22 +46,64 @@ impl PduBody {
         command_status: u32,
     ) -> Result<Self, PduParseError> {
         Ok(match self {
-            PduBody::BindTransmitter(b) => PduBody::BindTransmitter(
-                b.validate_command_status(command_status)?,
-            ),
-            PduBody::BindTransmitterResp(b) => PduBody::BindTransmitterResp(
-                b.validate_command_status(command_status)?,
-            ),
+            PduBody::BindReceiver(b) => {
+                b.validate_command_status(command_status)?.into()
+            }
+            PduBody::BindReceiverResp(b) => {
+                b.validate_command_status(command_status)?.into()
+            }
+            PduBody::BindTransceiver(b) => {
+                b.validate_command_status(command_status)?.into()
+            }
+            PduBody::BindTransceiverResp(b) => {
+                b.validate_command_status(command_status)?.into()
+            }
+            PduBody::BindTransmitter(b) => {
+                b.validate_command_status(command_status)?.into()
+            }
+            PduBody::BindTransmitterResp(b) => {
+                b.validate_command_status(command_status)?.into()
+            }
+            PduBody::EnquireLink(b) => {
+                b.validate_command_status(command_status)?.into()
+            }
+            PduBody::EnquireLinkResp(b) => {
+                b.validate_command_status(command_status)?.into()
+            }
             PduBody::GenericNack(b) => {
-                PduBody::GenericNack(b.validate_command_status(command_status)?)
+                b.validate_command_status(command_status)?.into()
             }
             PduBody::SubmitSm(b) => {
-                PduBody::SubmitSm(b.validate_command_status(command_status)?)
+                b.validate_command_status(command_status)?.into()
             }
-            PduBody::SubmitSmResp(b) => PduBody::SubmitSmResp(
-                b.validate_command_status(command_status)?,
-            ),
+            PduBody::SubmitSmResp(b) => {
+                b.validate_command_status(command_status)?.into()
+            }
         })
+    }
+}
+
+impl From<BindReceiverPdu> for PduBody {
+    fn from(body: BindReceiverPdu) -> PduBody {
+        PduBody::BindReceiver(body)
+    }
+}
+
+impl From<BindReceiverRespPdu> for PduBody {
+    fn from(body: BindReceiverRespPdu) -> PduBody {
+        PduBody::BindReceiverResp(body)
+    }
+}
+
+impl From<BindTransceiverPdu> for PduBody {
+    fn from(body: BindTransceiverPdu) -> PduBody {
+        PduBody::BindTransceiver(body)
+    }
+}
+
+impl From<BindTransceiverRespPdu> for PduBody {
+    fn from(body: BindTransceiverRespPdu) -> PduBody {
+        PduBody::BindTransceiverResp(body)
     }
 }
 
@@ -66,6 +116,18 @@ impl From<BindTransmitterPdu> for PduBody {
 impl From<BindTransmitterRespPdu> for PduBody {
     fn from(body: BindTransmitterRespPdu) -> PduBody {
         PduBody::BindTransmitterResp(body)
+    }
+}
+
+impl From<EnquireLinkPdu> for PduBody {
+    fn from(body: EnquireLinkPdu) -> PduBody {
+        PduBody::EnquireLink(body)
+    }
+}
+
+impl From<EnquireLinkRespPdu> for PduBody {
+    fn from(body: EnquireLinkRespPdu) -> PduBody {
+        PduBody::EnquireLinkResp(body)
     }
 }
 
@@ -191,8 +253,14 @@ impl Pdu {
         self.command_status.write(&mut buf).await?;
         self.sequence_number.write(&mut buf).await?;
         match &self.body {
+            PduBody::BindReceiver(body) => body.write(&mut buf).await?,
+            PduBody::BindReceiverResp(body) => body.write(&mut buf).await?,
+            PduBody::BindTransceiver(body) => body.write(&mut buf).await?,
+            PduBody::BindTransceiverResp(body) => body.write(&mut buf).await?,
             PduBody::BindTransmitter(body) => body.write(&mut buf).await?,
             PduBody::BindTransmitterResp(body) => body.write(&mut buf).await?,
+            PduBody::EnquireLink(body) => body.write(&mut buf).await?,
+            PduBody::EnquireLinkResp(body) => body.write(&mut buf).await?,
             PduBody::GenericNack(body) => body.write(&mut buf).await?,
             PduBody::SubmitSm(body) => body.write(&mut buf).await?,
             PduBody::SubmitSmResp(body) => body.write(&mut buf).await?,
@@ -205,11 +273,17 @@ impl Pdu {
 
     pub fn command_id(&self) -> Integer4 {
         Integer4::new(match self.body {
-            PduBody::GenericNack(_) => 0x80000000,
+            PduBody::BindReceiver(_) => 0x00000001,
+            PduBody::BindReceiverResp(_) => 0x80000001,
             PduBody::BindTransmitter(_) => 0x00000002,
             PduBody::BindTransmitterResp(_) => 0x80000002,
             PduBody::SubmitSm(_) => 0x00000004,
             PduBody::SubmitSmResp(_) => 0x80000004,
+            PduBody::BindTransceiver(_) => 0x00000009,
+            PduBody::BindTransceiverResp(_) => 0x80000009,
+            PduBody::EnquireLink(_) => 0x00000015,
+            PduBody::EnquireLinkResp(_) => 0x80000015,
+            PduBody::GenericNack(_) => 0x80000000,
         })
     }
 
@@ -224,14 +298,34 @@ pub fn parse_body(
     command_status: u32,
 ) -> Result<PduBody, PduParseError> {
     match command_id {
-        0x00000002 => BindTransmitterPdu::parse(bytes, command_status)
-            .map(|p| PduBody::BindTransmitter(p)),
+        0x00000001 => {
+            BindReceiverPdu::parse(bytes, command_status).map(|p| p.into())
+        }
+        0x80000001 => {
+            BindReceiverRespPdu::parse(bytes, command_status).map(|p| p.into())
+        }
+        0x00000002 => {
+            BindTransmitterPdu::parse(bytes, command_status).map(|p| p.into())
+        }
         0x80000002 => BindTransmitterRespPdu::parse(bytes, command_status)
-            .map(|p| PduBody::BindTransmitterResp(p)),
-        0x00000004 => SubmitSmPdu::parse(bytes, command_status)
-            .map(|p| PduBody::SubmitSm(p)),
-        0x80000004 => SubmitSmRespPdu::parse(bytes, command_status)
-            .map(|p| PduBody::SubmitSmResp(p)),
+            .map(|p| p.into()),
+        0x00000004 => {
+            SubmitSmPdu::parse(bytes, command_status).map(|p| p.into())
+        }
+        0x80000004 => {
+            SubmitSmRespPdu::parse(bytes, command_status).map(|p| p.into())
+        }
+        0x00000009 => {
+            BindTransceiverPdu::parse(bytes, command_status).map(|p| p.into())
+        }
+        0x80000009 => BindTransceiverRespPdu::parse(bytes, command_status)
+            .map(|p| p.into()),
+        0x00000015 => {
+            EnquireLinkPdu::parse(bytes, command_status).map(|p| p.into())
+        }
+        0x80000015 => {
+            EnquireLinkRespPdu::parse(bytes, command_status).map(|p| p.into())
+        }
         _ => Err(PduParseError::new(PduParseErrorBody::UnknownCommandId)),
     }
 }
@@ -296,6 +390,62 @@ mod tests {
                 0x00000000,
                 0x01020344,
                 BindTransmitterPdu::new(
+                    "mysystem_ID",
+                    "pw$xx",
+                    "t_p_",
+                    0x34,
+                    0x13,
+                    0x50,
+                    "rng"
+                )
+                .unwrap()
+                .into()
+            )
+            .unwrap()
+        );
+    }
+
+    #[test]
+    fn parse_valid_bind_receiver() {
+        const PDU: &[u8; 0x2e + 0x6] =
+            b"\x00\x00\x00\x2e\x00\x00\x00\x01\x00\x00\x00\x00\x01\x02\x03\x45\
+            mysystem_ID\0pw$xx\0t_p_\0\x34\x13\x50rng\0foobar";
+
+        let mut cursor = Cursor::new(&PDU[..]);
+        assert_eq!(
+            Pdu::parse(&mut cursor).unwrap(),
+            Pdu::new(
+                0x00000000,
+                0x01020345,
+                BindReceiverPdu::new(
+                    "mysystem_ID",
+                    "pw$xx",
+                    "t_p_",
+                    0x34,
+                    0x13,
+                    0x50,
+                    "rng"
+                )
+                .unwrap()
+                .into()
+            )
+            .unwrap()
+        );
+    }
+
+    #[test]
+    fn parse_valid_bind_transceiver() {
+        const PDU: &[u8; 0x2e + 0x6] =
+            b"\x00\x00\x00\x2e\x00\x00\x00\x09\x00\x00\x00\x00\x01\x02\x03\x45\
+            mysystem_ID\0pw$xx\0t_p_\0\x34\x13\x50rng\0foobar";
+
+        let mut cursor = Cursor::new(&PDU[..]);
+        assert_eq!(
+            Pdu::parse(&mut cursor).unwrap(),
+            Pdu::new(
+                0x00000000,
+                0x01020345,
+                BindTransceiverPdu::new(
                     "mysystem_ID",
                     "pw$xx",
                     "t_p_",
@@ -458,6 +608,50 @@ mod tests {
                 0x00000002,
                 PduBody::BindTransmitterResp(
                     BindTransmitterRespPdu::new("TestServer",).unwrap(),
+                )
+            )
+            .unwrap()
+        );
+    }
+
+    #[test]
+    fn parse_valid_bind_transceiver_resp() {
+        const PDU: &[u8; 0x1b + 0xa] =
+            b"\x00\x00\x00\x1b\x80\x00\x00\x09\x00\x00\x00\x00\x00\x00\x02\x02\
+            TestServer\0extrabytes";
+
+        let mut cursor = Cursor::new(&PDU[..]);
+        b"\x00\x00\x00\x1b\x80\x00\x00\x02\x00\x00\x00\x00\x00\x00\x00\x02\
+        TestServer\0extrabytes";
+        assert_eq!(
+            Pdu::parse(&mut cursor).unwrap(),
+            Pdu::new(
+                0x00000000,
+                0x00000202,
+                PduBody::BindTransceiverResp(
+                    BindTransceiverRespPdu::new("TestServer",).unwrap(),
+                )
+            )
+            .unwrap()
+        );
+    }
+
+    #[test]
+    fn parse_valid_bind_receiver_resp() {
+        const PDU: &[u8; 0x1b + 0xa] =
+            b"\x00\x00\x00\x1b\x80\x00\x00\x01\x00\x00\x00\x00\x00\x00\x30\x02\
+            TestServer\0extrabytes";
+
+        let mut cursor = Cursor::new(&PDU[..]);
+        b"\x00\x00\x00\x1b\x80\x00\x00\x01\x00\x00\x00\x00\x00\x00\x30\x02\
+        TestServer\0extrabytes";
+        assert_eq!(
+            Pdu::parse(&mut cursor).unwrap(),
+            Pdu::new(
+                0x00000000,
+                0x00003002,
+                PduBody::BindReceiverResp(
+                    BindReceiverRespPdu::new("TestServer",).unwrap(),
                 )
             )
             .unwrap()
@@ -697,6 +891,38 @@ mod tests {
             sequence_number=0xF0000000, field_name=UNKNOWN): \
             Sequence number 0xF0000000 is not allowed: \
             must be 0x00000001 to 0x7FFFFFFF.",
+        );
+    }
+
+    #[test]
+    fn parse_enquire_link() {
+        const PDU: &[u8; 0x10] = b"\
+            \x00\x00\x00\x10\
+            \x00\x00\x00\x15\
+            \x00\x00\x00\x00\
+            \x00\x00\x00\x0A";
+
+        let mut cursor = Cursor::new(&PDU[..]);
+        assert_eq!(
+            Pdu::parse(&mut cursor).unwrap(),
+            Pdu::new(0x00000000, 0x0000000A, EnquireLinkPdu::new().into())
+                .unwrap()
+        );
+    }
+
+    #[test]
+    fn parse_enquire_link_resp() {
+        const PDU: &[u8; 0x10] = b"\
+            \x00\x00\x00\x10\
+            \x80\x00\x00\x15\
+            \x00\x00\x00\x00\
+            \x00\x00\x00\x0A";
+
+        let mut cursor = Cursor::new(&PDU[..]);
+        assert_eq!(
+            Pdu::parse(&mut cursor).unwrap(),
+            Pdu::new(0x00000000, 0x0000000A, EnquireLinkRespPdu::new().into())
+                .unwrap()
         );
     }
 
