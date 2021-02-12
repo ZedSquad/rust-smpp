@@ -10,12 +10,13 @@ use tokio::io::AsyncReadExt;
 use tokio::net::{TcpListener, TcpStream};
 use tokio::sync::{Semaphore, TryAcquireError};
 
+use crate::async_result::AsyncResult;
 use crate::pdu::{
+    BindReceiverRespPdu, BindTransceiverRespPdu, BindTransmitterRespPdu,
     CheckOutcome, EnquireLinkRespPdu, GenericNackPdu, Pdu, PduBody,
     PduParseError, PduParseErrorBody, PduStatus,
 };
 use crate::smsc_config::SmscConfig;
-use crate::{async_result::AsyncResult, pdu::BindTransmitterRespPdu};
 
 pub fn run(config: SmscConfig) -> AsyncResult<()> {
     let rt = tokio::runtime::Runtime::new()?;
@@ -205,10 +206,26 @@ async fn handle_pdu(
 ) -> Result<Pdu, ProcessError> {
     info!("<= {:?}", pdu);
     match pdu.body() {
+        PduBody::BindReceiver(_body) => Pdu::new(
+            PduStatus::ESME_ROK as u32,
+            pdu.sequence_number.value,
+            BindReceiverRespPdu::new(&config.system_id).unwrap().into(),
+        )
+        .map_err(|e| e.into()),
+
         PduBody::BindTransmitter(_body) => Pdu::new(
             PduStatus::ESME_ROK as u32,
             pdu.sequence_number.value,
             BindTransmitterRespPdu::new(&config.system_id)
+                .unwrap()
+                .into(),
+        )
+        .map_err(|e| e.into()),
+
+        PduBody::BindTransceiver(_body) => Pdu::new(
+            PduStatus::ESME_ROK as u32,
+            pdu.sequence_number.value,
+            BindTransceiverRespPdu::new(&config.system_id)
                 .unwrap()
                 .into(),
         )

@@ -5,8 +5,9 @@ use tokio::io::{AsyncReadExt, AsyncWriteExt};
 mod test_utils;
 
 use test_utils::{
-    bytes_as_string as s, TestClient, TestServer, BIND_TRANSMITTER_PDU,
-    BIND_TRANSMITTER_RESP_PDU,
+    bytes_as_string as s, TestClient, TestServer, BIND_RECEIVER_PDU,
+    BIND_RECEIVER_RESP_PDU, BIND_TRANSCEIVER_PDU, BIND_TRANSCEIVER_RESP_PDU,
+    BIND_TRANSMITTER_PDU, BIND_TRANSMITTER_RESP_PDU,
 };
 
 #[test]
@@ -27,6 +28,36 @@ fn when_we_receive_bind_transmitter_we_respond_with_resp() {
         // * system_id = TestServer (as set up in TestServer)
         let resp = client.read_n(BIND_TRANSMITTER_RESP_PDU.len()).await;
         assert_eq!(s(&resp), s(BIND_TRANSMITTER_RESP_PDU));
+    })
+}
+
+#[test]
+fn when_we_receive_bind_receiver_we_respond_with_resp() {
+    // Given an SMSC
+    let server = TestServer::start().unwrap();
+    server.runtime.block_on(async {
+        // When ESME binds
+        let mut client = TestClient::connect_to(&server).await.unwrap();
+        client.stream.write(BIND_RECEIVER_PDU).await.unwrap();
+
+        // Then SMSC responds correctly
+        let resp = client.read_n(BIND_RECEIVER_RESP_PDU.len()).await;
+        assert_eq!(s(&resp), s(BIND_RECEIVER_RESP_PDU));
+    })
+}
+
+#[test]
+fn when_we_receive_bind_transceiver_we_respond_with_resp() {
+    // Given an SMSC
+    let server = TestServer::start().unwrap();
+    server.runtime.block_on(async {
+        // When ESME binds
+        let mut client = TestClient::connect_to(&server).await.unwrap();
+        client.stream.write(BIND_TRANSCEIVER_PDU).await.unwrap();
+
+        // Then SMSC responds correctly
+        let resp = client.read_n(BIND_TRANSCEIVER_RESP_PDU.len()).await;
+        assert_eq!(s(&resp), s(BIND_TRANSCEIVER_RESP_PDU));
     })
 }
 
