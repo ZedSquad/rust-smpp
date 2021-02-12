@@ -89,7 +89,9 @@ impl From<SubmitSmRespPdu> for PduBody {
 
 #[derive(Debug, PartialEq)]
 pub struct Pdu {
+    // TODO: Consider using PduStatus to hold this
     pub command_status: Integer4,
+    // TODO: The allowed sequence_number range is from 0x00000001 to 0x7FFFFFFF.
     pub sequence_number: Integer4,
     body: PduBody,
 }

@@ -7,7 +7,7 @@ use crate::pdu::{
     MIN_PDU_LENGTH,
 };
 
-use super::CheckError;
+use super::{CheckError, PduStatus};
 
 #[derive(Debug)]
 pub enum PduParseErrorBody {
@@ -60,6 +60,21 @@ impl PduParseError {
     pub fn into_with_field_name(mut self, field_name: &str) -> Self {
         self.field_name = Some(String::from(field_name));
         self
+    }
+
+    pub fn status(&self) -> u32 {
+        (match self.body {
+            PduParseErrorBody::LengthTooLong(_) => PduStatus::ESME_RINVCMDLEN,
+            PduParseErrorBody::LengthTooShort(_) => PduStatus::ESME_RINVCMDLEN,
+            PduParseErrorBody::LengthLongerThanPdu(_) => {
+                PduStatus::ESME_RINVCMDLEN
+            }
+            PduParseErrorBody::IncorrectLength(_, _) => {
+                PduStatus::ESME_RINVMSGLEN
+            }
+            PduParseErrorBody::UnknownCommandId => PduStatus::ESME_RINVCMDID,
+            _ => PduStatus::ESME_RSYSERR,
+        }) as u32
     }
 }
 

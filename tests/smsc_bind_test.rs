@@ -38,8 +38,8 @@ fn when_we_receive_a_bad_pdu_we_respond_with_failure_resp_pdu() {
     //  ^^^^ non-ascii
 
     const RESP: &[u8; 0x10] =
-        b"\x00\x00\x00\x10\x80\x00\x00\x02\x00\x00\x00\x01\x00\x00\x00\x14";
-    //                                          error ^^^^        seq ^^^^
+        b"\x00\x00\x00\x10\x80\x00\x00\x02\x00\x00\x00\x08\x00\x00\x00\x14";
+    //                                   system error ^^^^        seq ^^^^
     // Note: no body part because this is an error response
 
     // Given an SMSC
@@ -83,8 +83,8 @@ fn when_sent_bad_pdu_header_we_respond_generic_nack() {
     //                        length is 1! ^^^^
 
     const RESP: &[u8; 0x10] =
-        b"\x00\x00\x00\x10\x80\x00\x00\x00\x00\x01\x00\x02\x00\x00\x00\x00";
-    //       generic_nack ^^^^^^^^^^^^^^^^      error ^^^^        seq ^^^^
+        b"\x00\x00\x00\x10\x80\x00\x00\x00\x00\x00\x00\x02\x00\x00\x00\x00";
+    //       generic_nack ^^^^        invalid cmd len ^^^^        seq ^^^^
 
     // Given an SMSC
     let server = TestServer::start().unwrap();
@@ -106,8 +106,8 @@ fn when_sent_bad_pdu_header_we_respond_generic_nack() {
 #[test]
 fn when_we_receive_wrong_type_of_pdu_we_respond_generic_nack() {
     const RESP: &[u8; 0x10] =
-        b"\x00\x00\x00\x10\x80\x00\x00\x00\x00\x01\x00\x03\x00\x00\x00\x02";
-    //       generic_nack ^^^^^^^^^^^^^^^^      error ^^^^        seq ^^^^
+        b"\x00\x00\x00\x10\x80\x00\x00\x00\x00\x00\x00\x03\x00\x00\x00\x02";
+    //       generic_nack ^^^^          invalid cmdid ^^^^        seq ^^^^
 
     // Given an SMSC
     let server = TestServer::start().unwrap();
@@ -138,8 +138,8 @@ fn when_we_receive_nontlv_pdu_with_too_long_length_return_an_error() {
     // length longer than content
 
     const RESP: &[u8; 0x10] =
-        b"\x00\x00\x00\x10\x80\x00\x00\x02\x00\x00\x00\x01\x00\x00\x00\x02";
-    //          bind_transmitter_resp ^^^^
+        b"\x00\x00\x00\x10\x80\x00\x00\x02\x00\x00\x00\x02\x00\x00\x00\x02";
+    //          bind_transmitter_resp ^^^^              ^^ cmd len invalid
 
     let many_bytes: Vec<u8> = PDU
         .iter()
@@ -176,8 +176,8 @@ fn when_we_receive_a_pdu_with_very_long_length_we_respond_generic_nack() {
     // very long length
 
     const RESP: &[u8; 0x10] =
-        b"\x00\x00\x00\x10\x80\x00\x00\x00\x00\x01\x00\x02\x00\x00\x00\x00";
-    //       generic_nack ^^^^^^^^^^^^^^^^      error ^^^^        seq ^^^^
+        b"\x00\x00\x00\x10\x80\x00\x00\x00\x00\x00\x00\x02\x00\x00\x00\x00";
+    //       generic_nack ^^^^        cmd len invalid ^^^^        seq ^^^^
 
     // Note: we don't provide the correct sequence number here: we could, but
     // we would have to read the PDU header before we notice the invalid
@@ -225,8 +225,8 @@ fn when_receive_pdu_with_short_length_but_long_string_we_respond_with_error() {
     const END: &[u8; 0x0a] = b"\0pd\0t\0\x34\x00\x00\0";
 
     const RESP: &[u8; 0x10] =
-        b"\x00\x00\x00\x10\x80\x00\x00\x02\x00\x00\x00\x01\x00\x00\x00\x02";
-    //          bind_transmitter_resp ^^^^
+        b"\x00\x00\x00\x10\x80\x00\x00\x02\x00\x00\x00\x08\x00\x00\x00\x02";
+    //          bind_transmitter_resp ^^^^ system error ^^
 
     // Our PDU will contain 100,000 letter 'e's within a COctetString
     let mut many_bytes: Vec<u8> = vec![];
@@ -257,8 +257,8 @@ fn when_receive_pdu_with_short_length_but_long_string_we_respond_with_error() {
 #[test]
 fn when_we_receive_unexpected_pdu_type_we_respond_with_error() {
     const RESP: &[u8; 0x10] =
-        b"\x00\x00\x00\x10\x80\x00\x00\x00\x00\x01\x00\x03\x00\x00\x00\x02";
-    //       generic_nack ^^^^^^^^^^^^^^^^      error ^^^^        seq ^^^^
+        b"\x00\x00\x00\x10\x80\x00\x00\x00\x00\x00\x00\x03\x00\x00\x00\x02";
+    //       generic_nack ^^^^          invalid cmdid ^^^^        seq ^^^^
 
     // Given an SMSC
     let server = TestServer::start().unwrap();
@@ -289,8 +289,8 @@ fn when_we_receive_invalid_pdu_type_we_respond_with_error() {
     //  invalid command_id ^^^^^^^^^^^^^^^^                       seq ^^^^
 
     const RESP: &[u8; 0x10] =
-        b"\x00\x00\x00\x10\x80\x00\x00\x00\x00\x01\x00\x01\x00\x00\x00\x22";
-    //       generic_nack ^^^^^^^^^^^^^^^^      error ^^^^        seq ^^^^
+        b"\x00\x00\x00\x10\x80\x00\x00\x00\x00\x00\x00\x03\x00\x00\x00\x22";
+    //       generic_nack ^^^^          invalid cmdid ^^^^        seq ^^^^
 
     // Given an SMSC
     let server = TestServer::start().unwrap();

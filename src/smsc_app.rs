@@ -12,15 +12,10 @@ use tokio::sync::{Semaphore, TryAcquireError};
 
 use crate::pdu::{
     CheckOutcome, GenericNackPdu, Pdu, PduBody, PduParseError,
-    PduParseErrorBody,
+    PduParseErrorBody, PduStatus,
 };
 use crate::smsc_config::SmscConfig;
 use crate::{async_result::AsyncResult, pdu::BindTransmitterRespPdu};
-
-// TODO: status as listed at 5.1.3 on https://smpp.org/SMPP_v3_4_Issue1_2.pdf
-const ERROR_STATUS_FAILED_TO_PARSE_OTHER_PDU: u32 = 0x00010001;
-const ERROR_STATUS_PDU_HEADER_INVALID: u32 = 0x00010002;
-const ERROR_STATUS_UNEXPECTED_PDU_TYPE: u32 = 0x00010003;
 
 pub fn run(config: SmscConfig) -> AsyncResult<()> {
     let rt = tokio::runtime::Runtime::new()?;
@@ -147,7 +142,7 @@ async fn process(
                             connection
                                 .write_pdu(
                                     &Pdu::new(
-                                        ERROR_STATUS_UNEXPECTED_PDU_TYPE,
+                                        PduStatus::ESME_RINVCMDID as u32,
                                         sequence_number,
                                         GenericNackPdu::new_error().into(),
                                     )
@@ -178,25 +173,22 @@ async fn process(
 fn handle_pdu_parse_error(error: &PduParseError) -> Pdu {
     let sequence_number = error.sequence_number.unwrap_or(0);
     match error.command_id {
-        Some(0x00000002) => {
-            // TODO: take error status from a list somewhere
-            Pdu::new(
-                0x00000001,
-                sequence_number,
-                BindTransmitterRespPdu::new_error().into(),
-            )
-            .unwrap()
-        }
+        Some(0x00000002) => Pdu::new(
+            error.status(),
+            sequence_number,
+            BindTransmitterRespPdu::new_error().into(),
+        )
+        .unwrap(),
         // For any PDU type we're not set up for, send generic_nack
         Some(_) => Pdu::new(
-            ERROR_STATUS_FAILED_TO_PARSE_OTHER_PDU,
+            error.status(),
             sequence_number,
             GenericNackPdu::new_error().into(),
         )
         .unwrap(),
         // If we don't even know the PDU type, send generic_nack
         None => Pdu::new(
-            ERROR_STATUS_PDU_HEADER_INVALID,
+            error.status(),
             sequence_number,
             GenericNackPdu::new_error().into(),
         )
@@ -211,7 +203,7 @@ async fn handle_pdu(
     info!("<= {:?}", pdu);
     match pdu.body() {
         PduBody::BindTransmitter(_body) => Pdu::new(
-            0x00000000,
+            PduStatus::ESME_ROK as u32,
             pdu.sequence_number.value,
             BindTransmitterRespPdu::new(&config.system_id)
                 .unwrap()
