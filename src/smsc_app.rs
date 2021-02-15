@@ -113,7 +113,8 @@ impl Display for ProcessError {
             ProcessError::PduParseError(e) => e.to_string(),
             ProcessError::UnexpectedPduType(e) => {
                 format!(
-                    "Unexpected PDU type (command_id={}, sequence_number={})",
+                    "Unexpected PDU type \
+                    (command_id={:#010X}, sequence_number={:#010X})",
                     e.command_id, e.sequence_number
                 )
             }
