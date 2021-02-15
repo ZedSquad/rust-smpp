@@ -90,10 +90,20 @@ impl TestClient {
             .spawn(async { sleep(Duration::from_millis(1)).await })
             .await?;
 
-        // Connect to the server
-        Ok(TestClient {
-            stream: TcpStream::connect(&server.bind_address).await?,
-        })
+        // Connect to the server, retrying with 10ms delay if we fail
+        let mut i: u8 = 0;
+        loop {
+            match TcpStream::connect(&server.bind_address).await {
+                Ok(stream) => return Ok(TestClient { stream }),
+                Err(e) => {
+                    i += 1;
+                    sleep(Duration::from_millis(10)).await;
+                    if i > 9 {
+                        return Err(e.into());
+                    }
+                }
+            }
+        }
     }
 
     #[allow(dead_code)]
