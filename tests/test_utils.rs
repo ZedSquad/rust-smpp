@@ -128,7 +128,7 @@ impl TestClient {
         let mut bytes: Vec<u8> = Vec::with_capacity(n);
 
         while bytes.len() < n {
-            bytes.push(self.stream.read_u8().await?)
+            bytes.push(self.stream.read_u8().await?);
         }
         Ok(bytes)
     }

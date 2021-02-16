@@ -30,8 +30,11 @@ impl SubmitSmRespPdu {
         Self { message_id: None }
     }
 
-    pub async fn write(&self, _stream: &mut WriteStream) -> io::Result<()> {
-        todo!()
+    pub async fn write(&self, stream: &mut WriteStream) -> io::Result<()> {
+        if let Some(message_id) = &self.message_id {
+            message_id.write(stream).await?
+        }
+        Ok(())
     }
 
     /// Parse a submit_sm_resp PDU.

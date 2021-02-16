@@ -63,10 +63,10 @@ fn when_we_receive_bind_transceiver_we_respond_with_resp() {
 
 #[test]
 fn when_we_receive_enquire_link_we_respond_with_resp() {
-    pub const ENQUIRE_LINK: &[u8; 0x10] =
+    const ENQUIRE_LINK: &[u8; 0x10] =
         b"\x00\x00\x00\x10\x00\x00\x00\x15\x00\x00\x00\x00\x00\x00\x00\x12";
 
-    pub const ENQUIRE_LINK_RESP: &[u8; 0x10] =
+    const ENQUIRE_LINK_RESP: &[u8; 0x10] =
         b"\x00\x00\x00\x10\x80\x00\x00\x15\x00\x00\x00\x00\x00\x00\x00\x12";
 
     // Given an SMSC
@@ -355,6 +355,52 @@ fn when_we_receive_invalid_pdu_type_we_respond_with_error() {
         // Then SMSC responds with an error
         let resp = client.read_n(RESP.len()).await;
         assert_eq!(s(&resp), s(RESP));
+    })
+}
+
+#[test]
+fn when_we_receive_submit_sm_we_respond_with_resp() {
+    let mut pdu: Vec<u8> = Vec::new();
+    pdu.extend(b"\x00\x00\x00\x3d"); //   command_length = 61
+    pdu.extend(b"\x00\x00\x00\x04"); //       command_id = submit_sm
+    pdu.extend(b"\x00\x00\x00\x00"); //   command_status = NULL
+    pdu.extend(b"\x00\x00\x00\x03"); //  sequence_number = 3
+    pdu.extend(b"\x00"); //                 service_type = 0
+    pdu.extend(b"\x00"); //               source_add_ton = 0
+    pdu.extend(b"\x00"); //              source_addr_npi = 0
+    pdu.extend(b"447000123123\x00"); //      source_addr
+    pdu.extend(b"\x00"); //                 dest_add_ton = 0
+    pdu.extend(b"\x00"); //                dest_addr_npi = 0
+    pdu.extend(b"447111222222\x00"); // destination_addr
+    pdu.extend(b"\x00"); //                    esm_class = 0
+    pdu.extend(b"\x01"); //                  protocol_id = 1
+    pdu.extend(b"\x01"); //                priority_flag = 1
+    pdu.extend(b"\x00"); //       schedule_delivery_time = 0
+    pdu.extend(b"\x00"); //              validity_period = 0
+    pdu.extend(b"\x01"); //          registered_delivery = 1
+    pdu.extend(b"\x00"); //      replace_if_present_flag = 0
+    pdu.extend(b"\x03"); //                  data_coding = 3
+    pdu.extend(b"\x00"); //            sm_default_msg_id = 0
+    pdu.extend(b"\x04"); //                    sm_length = 4
+    pdu.extend(b"hihi"); //                short_message = hihi
+
+    let mut resp: Vec<u8> = Vec::new();
+    resp.extend(b"\x00\x00\x00\x11"); //  command_length = 17
+    resp.extend(b"\x80\x00\x00\x04"); //      command_id = submit_sm_resp
+    resp.extend(b"\x00\x00\x00\x00"); //  command_status = ESME_ROK
+    resp.extend(b"\x00\x00\x00\x03"); // sequence_number = 3
+    resp.extend(b"\x00"); //                  message_id = ""
+
+    // Given an SMSC
+    let server = TestServer::start().unwrap();
+    server.runtime.block_on(async {
+        // When we send a submit_sm
+        let mut client = TestClient::connect_to(&server).await.unwrap();
+        client.stream.write(&pdu).await.unwrap();
+
+        // Then SMSC responds, with the same sequence number
+        let resp = client.read_n(resp.len()).await;
+        assert_eq!(s(&resp), s(&resp));
     })
 }
 

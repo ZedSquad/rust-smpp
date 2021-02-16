@@ -14,7 +14,7 @@ use crate::async_result::AsyncResult;
 use crate::pdu::{
     BindReceiverRespPdu, BindTransceiverRespPdu, BindTransmitterRespPdu,
     CheckOutcome, EnquireLinkRespPdu, GenericNackPdu, Pdu, PduBody,
-    PduParseError, PduParseErrorBody, PduStatus,
+    PduParseError, PduParseErrorBody, PduStatus, SubmitSmRespPdu,
 };
 use crate::smsc_config::SmscConfig;
 
@@ -236,6 +236,13 @@ async fn handle_pdu(
             PduStatus::ESME_ROK as u32,
             pdu.sequence_number.value,
             EnquireLinkRespPdu::new().into(),
+        )
+        .map_err(|e| e.into()),
+
+        PduBody::SubmitSm(_body) => Pdu::new(
+            PduStatus::ESME_ROK as u32,
+            pdu.sequence_number.value,
+            SubmitSmRespPdu::new("").unwrap().into(),
         )
         .map_err(|e| e.into()),
 
