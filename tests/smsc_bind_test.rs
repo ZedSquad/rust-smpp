@@ -4,129 +4,66 @@ use tokio::io::{AsyncReadExt, AsyncWriteExt};
 
 mod test_utils;
 
-use test_utils::{bytes_as_string as s, TestClient, TestServer};
+use test_utils::{bytes_as_string, TestClient, TestServer};
 
-#[allow(dead_code)]
 #[test]
 fn when_we_receive_bind_transmitter_we_respond_with_resp() {
-    // When ESME binds with sequence number = 2
-    const PDU: &[u8; 0x29] =
+    // Given a server with a client connected to it
+    TestSetup::new().send_and_expect_response(
+        // When client sends bind_transmitter, sequence_number = 2
         b"\x00\x00\x00\x29\x00\x00\x00\x02\x00\x00\x00\x00\x00\x00\x00\x02\
-        esmeid\0password\0type\0\x34\x00\x00\0";
-
-    // Then SMSC responds, with:
-    // * length = 1b
-    // * type   80000002
-    // * status 0 (because all is OK)
-    // * sequence number = 2 (because that is what we provided)
-    // * system_id = TestServer (as set up in TestServer)
-    const RESP: &[u8; 0x1b] =
+        esmeid\0password\0type\0\x34\x00\x00\0",
+        // Then server responds bind_transmitter_resp, sequence_number = 2
         b"\x00\x00\x00\x1b\x80\x00\x00\x02\x00\x00\x00\x00\x00\x00\x00\x02\
-        TestServer\0";
-
-    let server = TestServer::start().unwrap();
-    server.runtime.block_on(async {
-        let mut client = TestClient::connect_to(&server).await.unwrap();
-        client.stream.write(PDU).await.unwrap();
-        let resp = client.read_n(RESP.len()).await;
-        assert_eq!(s(&resp), s(RESP));
-    })
+        TestServer\0",
+    );
 }
 
 #[test]
 fn when_we_receive_bind_receiver_we_respond_with_resp() {
-    const PDU: &[u8; 0x29] =
-        b"\x00\x00\x00\x29\x00\x00\x00\x01\x00\x00\x00\x00\x00\x00\x00\x02\
-        esmeid\0password\0type\0\x34\x00\x00\0";
-
-    const RESP: &[u8; 0x1b] =
-        b"\x00\x00\x00\x1b\x80\x00\x00\x01\x00\x00\x00\x00\x00\x00\x00\x02\
-        TestServer\0";
-
-    // Given an SMSC
-    let server = TestServer::start().unwrap();
-    server.runtime.block_on(async {
-        // When ESME binds
-        let mut client = TestClient::connect_to(&server).await.unwrap();
-        client.stream.write(PDU).await.unwrap();
-
-        // Then SMSC responds correctly
-        let resp = client.read_n(RESP.len()).await;
-        assert_eq!(s(&resp), s(RESP));
-    })
+    TestSetup::new().send_and_expect_response(
+        // When client sends bind_receiver, sequence_number = 8
+        b"\x00\x00\x00\x29\x00\x00\x00\x01\x00\x00\x00\x00\x00\x00\x00\x08\
+        esmeid\0password\0type\0\x34\x00\x00\0",
+        // Then server responds bind_receiver_resp, sequence_number = 8
+        b"\x00\x00\x00\x1b\x80\x00\x00\x01\x00\x00\x00\x00\x00\x00\x00\x08\
+        TestServer\0",
+    );
 }
 
 #[test]
 fn when_we_receive_bind_transceiver_we_respond_with_resp() {
-    const PDU: &[u8; 0x29] =
-        b"\x00\x00\x00\x29\x00\x00\x00\x09\x00\x00\x00\x00\x00\x00\x00\x02\
-        esmeid\0password\0type\0\x34\x00\x00\0";
-
-    const RESP: &[u8; 0x1b] =
-        b"\x00\x00\x00\x1b\x80\x00\x00\x09\x00\x00\x00\x00\x00\x00\x00\x02\
-        TestServer\0";
-
-    // Given an SMSC
-    let server = TestServer::start().unwrap();
-    server.runtime.block_on(async {
-        // When ESME binds
-        let mut client = TestClient::connect_to(&server).await.unwrap();
-        client.stream.write(PDU).await.unwrap();
-
-        // Then SMSC responds correctly
-        let resp = client.read_n(RESP.len()).await;
-        assert_eq!(s(&resp), s(RESP));
-    })
+    TestSetup::new().send_and_expect_response(
+        // When client sends bind_transceiver, sequence_number = 6
+        b"\x00\x00\x00\x29\x00\x00\x00\x09\x00\x00\x00\x00\x00\x00\x00\x06\
+        esmeid\0password\0type\0\x34\x00\x00\0",
+        // Then server responds bind_transceiver_resp, sequence_number = 6
+        b"\x00\x00\x00\x1b\x80\x00\x00\x09\x00\x00\x00\x00\x00\x00\x00\x06\
+        TestServer\0",
+    );
 }
 
 #[test]
 fn when_we_receive_enquire_link_we_respond_with_resp() {
-    const ENQUIRE_LINK: &[u8; 0x10] =
-        b"\x00\x00\x00\x10\x00\x00\x00\x15\x00\x00\x00\x00\x00\x00\x00\x12";
-
-    const ENQUIRE_LINK_RESP: &[u8; 0x10] =
-        b"\x00\x00\x00\x10\x80\x00\x00\x15\x00\x00\x00\x00\x00\x00\x00\x12";
-
-    // Given an SMSC
-    let server = TestServer::start().unwrap();
-    server.runtime.block_on(async {
-        // When ESME enquires
-        let mut client = TestClient::connect_to(&server).await.unwrap();
-        client.stream.write(ENQUIRE_LINK).await.unwrap();
-
-        // Then SMSC responds, with the same sequence number
-        let resp = client.read_n(ENQUIRE_LINK_RESP.len()).await;
-        assert_eq!(s(&resp), s(ENQUIRE_LINK_RESP));
-    })
+    TestSetup::new().send_and_expect_response(
+        // When client sends enquire_link
+        b"\x00\x00\x00\x10\x00\x00\x00\x15\x00\x00\x00\x00\x00\x00\x00\x12",
+        // Then server responds enquire_link_resp
+        b"\x00\x00\x00\x10\x80\x00\x00\x15\x00\x00\x00\x00\x00\x00\x00\x12",
+    );
 }
 
 #[test]
 fn when_we_receive_a_bad_pdu_we_respond_with_failure_resp_pdu() {
-    const PDU: &[u8; 0x29] =
+    TestSetup::new().send_and_expect_error_response(
         b"\x00\x00\x00\x29\x00\x00\x00\x02\x00\x00\x00\x00\x00\x00\x00\x14\
-        e\xf0\x9f\x92\xa9d\0password\0type\0\x34\x00\x00\0";
-    //  ^^^^ non-ascii
-
-    const RESP: &[u8; 0x10] =
-        b"\x00\x00\x00\x10\x80\x00\x00\x02\x00\x00\x00\x08\x00\x00\x00\x14";
-    //                                   system error ^^^^        seq ^^^^
-    // Note: no body part because this is an error response
-
-    // Given an SMSC
-    let server = TestServer::start().unwrap();
-    server.runtime.block_on(async {
-        // When ESME tries to bind with an invalid PDU
-        let mut client = TestClient::connect_to(&server).await.unwrap();
-        client.stream.write(PDU).await.unwrap();
-
-        // Then SMSC responds with an error response
-        let resp = client.read_n(RESP.len()).await;
-        assert_eq!(s(&resp), s(RESP));
-
-        // And then drops the connection
-        let resp = client.stream.read_u8().await.unwrap_err();
-        assert_eq!(&resp.to_string(), "unexpected end of file");
-    })
+        e\xf0\x9f\x92\xa9d\0password\0type\0\x34\x00\x00\0",
+        //  ^^^^ non-ascii
+        b"\x00\x00\x00\x10\x80\x00\x00\x02\x00\x00\x00\x08\x00\x00\x00\x14",
+        //                               system error ^^^^        seq ^^^^
+        // Note: no body part because this is an error response
+        "unexpected end of file",
+    );
 }
 
 #[test]
@@ -149,56 +86,25 @@ fn when_client_disconnects_within_pdu_we_continue_accepting_new_connections() {
 
 #[test]
 fn when_sent_bad_pdu_header_we_respond_generic_nack() {
-    const PDU: &[u8; 0x04] = b"\x00\x00\x00\x01";
-    //                        length is 1! ^^^^
-
-    const RESP: &[u8; 0x10] =
-        b"\x00\x00\x00\x10\x80\x00\x00\x00\x00\x00\x00\x02\x00\x00\x00\x01";
-    //       generic_nack ^^^^        invalid cmd len ^^^^        seq ^^^^
-
-    // Given an SMSC
-    let server = TestServer::start().unwrap();
-    server.runtime.block_on(async {
-        // When ESME tries to bind with a PDU with invalid header
-        let mut client = TestClient::connect_to(&server).await.unwrap();
-        client.stream.write(PDU).await.unwrap();
-
-        // Then SMSC responds with an error response
-        let resp = client.read_n(RESP.len()).await;
-        assert_eq!(s(&resp), s(RESP));
-
-        // And then drops the connection
-        let resp = client.stream.read_u8().await.unwrap_err();
-        assert_eq!(&resp.to_string(), "unexpected end of file");
-    })
+    TestSetup::new().send_and_expect_error_response(
+        b"\x00\x00\x00\x01",
+        // length is 1! ^^
+        b"\x00\x00\x00\x10\x80\x00\x00\x00\x00\x00\x00\x02\x00\x00\x00\x01",
+        //     generic_nack ^^^^            ^^^ invalid cmd len   seq ^^^^
+        "unexpected end of file",
+    );
 }
 
 #[test]
 fn when_we_receive_wrong_type_of_pdu_we_respond_generic_nack() {
-    const PDU: &[u8; 0x1b] =
+    TestSetup::new().send_and_expect_error_response(
         b"\x00\x00\x00\x1b\x80\x00\x00\x02\x00\x00\x00\x00\x00\x00\x00\x02\
-        TestServer\0";
-    // bind_transmitter_resp ^^^^^^^^^^^^^ - doesn't make sense
-
-    const RESP: &[u8; 0x10] =
-        b"\x00\x00\x00\x10\x80\x00\x00\x00\x00\x00\x00\x03\x00\x00\x00\x02";
-    //       generic_nack ^^^^          invalid cmdid ^^^^        seq ^^^^
-
-    // Given an SMSC
-    let server = TestServer::start().unwrap();
-    server.runtime.block_on(async {
-        // When ESME sends a BIND_TRANSMITTER_RESP, which does not make sense
-        let mut client = TestClient::connect_to(&server).await.unwrap();
-        client.stream.write(PDU).await.unwrap();
-
-        // Then SMSC responds with an error response
-        let resp = client.read_n(RESP.len()).await;
-        assert_eq!(s(&resp), s(RESP));
-
-        // And then drops the connection
-        let resp = client.stream.read_u8().await.unwrap_err();
-        assert_eq!(&resp.to_string(), "unexpected end of file");
-    })
+        TestServer\0",
+        // bind_transmitter_resp ^^^^^^^^^^^^^ - doesn't make sense
+        b"\x00\x00\x00\x10\x80\x00\x00\x00\x00\x00\x00\x03\x00\x00\x00\x02",
+        //       generic_nack ^^^^          invalid cmdid ^^^^        seq ^^^^
+        "unexpected end of file",
+    );
 }
 
 #[test]
@@ -208,10 +114,6 @@ fn when_we_receive_nontlv_pdu_with_too_long_length_return_an_error() {
         esmeid\0password\0type\0\x34\x00\x00\0";
     // length longer than content
 
-    const RESP: &[u8; 0x10] =
-        b"\x00\x00\x00\x10\x80\x00\x00\x02\x00\x00\x00\x02\x00\x00\x00\x02";
-    //          bind_transmitter_resp ^^^^              ^^ cmd len invalid
-
     let many_bytes: Vec<u8> = PDU
         .iter()
         .copied()
@@ -219,24 +121,12 @@ fn when_we_receive_nontlv_pdu_with_too_long_length_return_an_error() {
         .take(100_000)
         .collect();
 
-    // Given an SMSC
-    let server = TestServer::start().unwrap();
-    server.runtime.block_on(async {
-        // When we send a short PDU with a length value suggesting it is long
-        let mut client = TestClient::connect_to(&server).await.unwrap();
-        client.stream.write(&many_bytes).await.unwrap();
-
-        // Then SMSC responds with bind_transmitter_resp error
-        let resp = client.read_n(RESP.len()).await;
-        assert_eq!(s(&resp), s(RESP));
-
-        // And then drops the connection
-        let resp = client.stream.read_u8().await.unwrap_err();
-        assert_eq!(
-            &resp.to_string(),
-            "Connection reset by peer (os error 104)"
-        );
-    })
+    TestSetup::new().send_and_expect_error_response(
+        &many_bytes,
+        b"\x00\x00\x00\x10\x80\x00\x00\x02\x00\x00\x00\x02\x00\x00\x00\x02",
+        //      bind_transmitter_resp ^^^^              ^^ cmd len invalid
+        "Connection reset by peer (os error 104)",
+    );
 }
 
 #[test]
@@ -275,7 +165,7 @@ fn when_we_receive_a_pdu_with_very_long_length_we_respond_generic_nack() {
         match resp {
             // responds with an error then drops the connection
             Ok(resp) => {
-                assert_eq!(s(&resp), s(RESP));
+                assert_eq!(bytes_as_string(&resp), bytes_as_string(RESP));
                 assert_eq!(
                     client.stream.read_u8().await.unwrap_err().kind(),
                     io::ErrorKind::ConnectionReset
@@ -295,58 +185,29 @@ fn when_receive_pdu_with_short_length_but_long_string_we_respond_with_error() {
         b"\x00\x00\x00\x1b\x00\x00\x00\x02\x00\x00\x00\x00\x00\x00\x00\x02e";
     const END: &[u8; 0x0a] = b"\0pd\0t\0\x34\x00\x00\0";
 
-    const RESP: &[u8; 0x10] =
-        b"\x00\x00\x00\x10\x80\x00\x00\x02\x00\x00\x00\x08\x00\x00\x00\x02";
-    //          bind_transmitter_resp ^^^^ system error ^^
-
     // Our PDU will contain 100,000 letter 'e's within a COctetString
     let mut many_bytes: Vec<u8> = vec![];
     many_bytes.extend(BEGIN.iter());
     many_bytes.extend(iter::repeat('e' as u8).take(100_000));
     many_bytes.extend(END.iter());
 
-    // Given an SMSC
-    let server = TestServer::start().unwrap();
-    server.runtime.block_on(async {
-        // When we send a huge PDU with small length
-        let mut client = TestClient::connect_to(&server).await.unwrap();
-        client.stream.write(&many_bytes).await.unwrap();
-
-        // Then SMSC responds with a generic error
-        let resp = client.read_n(RESP.len()).await;
-        assert_eq!(s(&resp), s(RESP));
-
-        // And then drops the connection
-        let resp = client.stream.read_u8().await.unwrap_err();
-        assert_eq!(
-            &resp.to_string(),
-            "Connection reset by peer (os error 104)"
-        );
-    })
+    TestSetup::new().send_and_expect_error_response(
+        &many_bytes,
+        b"\x00\x00\x00\x10\x80\x00\x00\x02\x00\x00\x00\x08\x00\x00\x00\x02",
+        //      bind_transmitter_resp ^^^^ system error ^^
+        "Connection reset by peer (os error 104)",
+    );
 }
 
 #[test]
 fn when_we_receive_invalid_pdu_type_we_respond_with_error() {
-    const PDU: &[u8; 0x10] =
-        b"\x00\x00\x00\x10\xff\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x22";
-    //  invalid command_id ^^^^^^^^^^^^^^^^                       seq ^^^^
-
-    const RESP: &[u8; 0x10] =
-        b"\x00\x00\x00\x10\x80\x00\x00\x00\x00\x00\x00\x03\x00\x00\x00\x22";
-    //       generic_nack ^^^^          invalid cmdid ^^^^        seq ^^^^
-
-    // Given an SMSC
-    let server = TestServer::start().unwrap();
-    server.runtime.block_on(async {
-        // When ESME binds with:
-        // * sequence number = 2
-        let mut client = TestClient::connect_to(&server).await.unwrap();
-        client.stream.write(PDU).await.unwrap();
-
-        // Then SMSC responds with an error
-        let resp = client.read_n(RESP.len()).await;
-        assert_eq!(s(&resp), s(RESP));
-    })
+    TestSetup::new().send_and_expect_error_response(
+        b"\x00\x00\x00\x10\xff\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x22",
+        //    this is invalid! ^^^^^^^^^^^^^^^                    seq ^^^^
+        b"\x00\x00\x00\x10\x80\x00\x00\x00\x00\x00\x00\x03\x00\x00\x00\x22",
+        //   generic_nack ^^^^          invalid cmdid ^^^^        seq ^^^^
+        "unexpected end of file",
+    );
 }
 
 #[test]
@@ -382,17 +243,57 @@ fn when_we_receive_submit_sm_we_respond_with_resp() {
     resp.extend(b"\x00\x00\x00\x03"); // sequence_number = 3
     resp.extend(b"\x00"); //                  message_id = ""
 
-    // Given an SMSC
-    let server = TestServer::start().unwrap();
-    server.runtime.block_on(async {
-        // When we send a submit_sm
-        let mut client = TestClient::connect_to(&server).await.unwrap();
-        client.stream.write(&pdu).await.unwrap();
+    TestSetup::new().send_and_expect_response(&pdu, &resp);
+}
 
-        // Then SMSC responds, with the same sequence number
-        let resp = client.read_n(resp.len()).await;
-        assert_eq!(s(&resp), s(&resp));
-    })
+/// Setup for running tests that send and receive PDUs
+pub struct TestSetup {
+    server: TestServer,
+}
+
+impl TestSetup {
+    pub fn new() -> Self {
+        let server = TestServer::start().unwrap();
+        Self { server }
+    }
+
+    async fn send_exp(
+        &self,
+        input: &[u8],
+        expected_output: &[u8],
+    ) -> TestClient {
+        let mut client = TestClient::connect_to(&self.server).await.unwrap();
+        client.stream.write(input).await.unwrap();
+
+        let resp = client.read_n(expected_output.len()).await;
+        assert_eq!(bytes_as_string(&resp), bytes_as_string(expected_output));
+        client
+    }
+
+    pub fn send_and_expect_response(
+        &self,
+        input: &[u8],
+        expected_output: &[u8],
+    ) {
+        self.server.runtime.block_on(async {
+            self.send_exp(input, expected_output).await;
+        })
+    }
+
+    pub fn send_and_expect_error_response(
+        &self,
+        input: &[u8],
+        expected_output: &[u8],
+        expected_error: &str,
+    ) {
+        self.server.runtime.block_on(async {
+            let mut client = self.send_exp(input, expected_output).await;
+
+            // Since this is an error, server should drop the connection
+            let resp = client.stream.read_u8().await.unwrap_err();
+            assert_eq!(&resp.to_string(), expected_error);
+        })
+    }
 }
 
 // TODO: allow and disallow binding via username+password (pluggable validator)
