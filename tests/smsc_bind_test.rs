@@ -4,60 +4,78 @@ use tokio::io::{AsyncReadExt, AsyncWriteExt};
 
 mod test_utils;
 
-use test_utils::{
-    bytes_as_string as s, TestClient, TestServer, BIND_RECEIVER_PDU,
-    BIND_RECEIVER_RESP_PDU, BIND_TRANSCEIVER_PDU, BIND_TRANSCEIVER_RESP_PDU,
-    BIND_TRANSMITTER_PDU, BIND_TRANSMITTER_RESP_PDU,
-};
+use test_utils::{bytes_as_string as s, TestClient, TestServer};
 
+#[allow(dead_code)]
 #[test]
 fn when_we_receive_bind_transmitter_we_respond_with_resp() {
-    // Given an SMSC
+    // When ESME binds with sequence number = 2
+    const PDU: &[u8; 0x29] =
+        b"\x00\x00\x00\x29\x00\x00\x00\x02\x00\x00\x00\x00\x00\x00\x00\x02\
+        esmeid\0password\0type\0\x34\x00\x00\0";
+
+    // Then SMSC responds, with:
+    // * length = 1b
+    // * type   80000002
+    // * status 0 (because all is OK)
+    // * sequence number = 2 (because that is what we provided)
+    // * system_id = TestServer (as set up in TestServer)
+    const RESP: &[u8; 0x1b] =
+        b"\x00\x00\x00\x1b\x80\x00\x00\x02\x00\x00\x00\x00\x00\x00\x00\x02\
+        TestServer\0";
+
     let server = TestServer::start().unwrap();
     server.runtime.block_on(async {
-        // When ESME binds with:
-        // * sequence number = 2
         let mut client = TestClient::connect_to(&server).await.unwrap();
-        client.stream.write(BIND_TRANSMITTER_PDU).await.unwrap();
-
-        // Then SMSC responds, with:
-        // * length = 1b
-        // * type   80000002
-        // * status 0 (because all is OK)
-        // * sequence number = 2 (because that is what we provided)
-        // * system_id = TestServer (as set up in TestServer)
-        let resp = client.read_n(BIND_TRANSMITTER_RESP_PDU.len()).await;
-        assert_eq!(s(&resp), s(BIND_TRANSMITTER_RESP_PDU));
+        client.stream.write(PDU).await.unwrap();
+        let resp = client.read_n(RESP.len()).await;
+        assert_eq!(s(&resp), s(RESP));
     })
 }
 
 #[test]
 fn when_we_receive_bind_receiver_we_respond_with_resp() {
+    const PDU: &[u8; 0x29] =
+        b"\x00\x00\x00\x29\x00\x00\x00\x01\x00\x00\x00\x00\x00\x00\x00\x02\
+        esmeid\0password\0type\0\x34\x00\x00\0";
+
+    const RESP: &[u8; 0x1b] =
+        b"\x00\x00\x00\x1b\x80\x00\x00\x01\x00\x00\x00\x00\x00\x00\x00\x02\
+        TestServer\0";
+
     // Given an SMSC
     let server = TestServer::start().unwrap();
     server.runtime.block_on(async {
         // When ESME binds
         let mut client = TestClient::connect_to(&server).await.unwrap();
-        client.stream.write(BIND_RECEIVER_PDU).await.unwrap();
+        client.stream.write(PDU).await.unwrap();
 
         // Then SMSC responds correctly
-        let resp = client.read_n(BIND_RECEIVER_RESP_PDU.len()).await;
-        assert_eq!(s(&resp), s(BIND_RECEIVER_RESP_PDU));
+        let resp = client.read_n(RESP.len()).await;
+        assert_eq!(s(&resp), s(RESP));
     })
 }
 
 #[test]
 fn when_we_receive_bind_transceiver_we_respond_with_resp() {
+    const PDU: &[u8; 0x29] =
+        b"\x00\x00\x00\x29\x00\x00\x00\x09\x00\x00\x00\x00\x00\x00\x00\x02\
+        esmeid\0password\0type\0\x34\x00\x00\0";
+
+    const RESP: &[u8; 0x1b] =
+        b"\x00\x00\x00\x1b\x80\x00\x00\x09\x00\x00\x00\x00\x00\x00\x00\x02\
+        TestServer\0";
+
     // Given an SMSC
     let server = TestServer::start().unwrap();
     server.runtime.block_on(async {
         // When ESME binds
         let mut client = TestClient::connect_to(&server).await.unwrap();
-        client.stream.write(BIND_TRANSCEIVER_PDU).await.unwrap();
+        client.stream.write(PDU).await.unwrap();
 
         // Then SMSC responds correctly
-        let resp = client.read_n(BIND_TRANSCEIVER_RESP_PDU.len()).await;
-        assert_eq!(s(&resp), s(BIND_TRANSCEIVER_RESP_PDU));
+        let resp = client.read_n(RESP.len()).await;
+        assert_eq!(s(&resp), s(RESP));
     })
 }
 
@@ -157,6 +175,11 @@ fn when_sent_bad_pdu_header_we_respond_generic_nack() {
 
 #[test]
 fn when_we_receive_wrong_type_of_pdu_we_respond_generic_nack() {
+    const PDU: &[u8; 0x1b] =
+        b"\x00\x00\x00\x1b\x80\x00\x00\x02\x00\x00\x00\x00\x00\x00\x00\x02\
+        TestServer\0";
+    // bind_transmitter_resp ^^^^^^^^^^^^^ - doesn't make sense
+
     const RESP: &[u8; 0x10] =
         b"\x00\x00\x00\x10\x80\x00\x00\x00\x00\x00\x00\x03\x00\x00\x00\x02";
     //       generic_nack ^^^^          invalid cmdid ^^^^        seq ^^^^
@@ -166,11 +189,7 @@ fn when_we_receive_wrong_type_of_pdu_we_respond_generic_nack() {
     server.runtime.block_on(async {
         // When ESME sends a BIND_TRANSMITTER_RESP, which does not make sense
         let mut client = TestClient::connect_to(&server).await.unwrap();
-        client
-            .stream
-            .write(BIND_TRANSMITTER_RESP_PDU)
-            .await
-            .unwrap();
+        client.stream.write(PDU).await.unwrap();
 
         // Then SMSC responds with an error response
         let resp = client.read_n(RESP.len()).await;
@@ -303,34 +322,6 @@ fn when_receive_pdu_with_short_length_but_long_string_we_respond_with_error() {
             &resp.to_string(),
             "Connection reset by peer (os error 104)"
         );
-    })
-}
-
-#[test]
-fn when_we_receive_unexpected_pdu_type_we_respond_with_error() {
-    const RESP: &[u8; 0x10] =
-        b"\x00\x00\x00\x10\x80\x00\x00\x00\x00\x00\x00\x03\x00\x00\x00\x02";
-    //       generic_nack ^^^^          invalid cmdid ^^^^        seq ^^^^
-
-    // Given an SMSC
-    let server = TestServer::start().unwrap();
-    server.runtime.block_on(async {
-        // When ESME binds with:
-        // * sequence number = 2
-        let mut client = TestClient::connect_to(&server).await.unwrap();
-        client
-            .stream
-            .write(BIND_TRANSMITTER_RESP_PDU)
-            .await
-            .unwrap();
-
-        // Then SMSC responds, with:
-        // * length = 1b
-        // * type   80000000
-        // * status 00010003 (because this is an error)
-        // * sequence number = 00000002 (because that is what we provided)
-        let resp = client.read_n(RESP.len()).await;
-        assert_eq!(s(&resp), s(RESP));
     })
 }
 

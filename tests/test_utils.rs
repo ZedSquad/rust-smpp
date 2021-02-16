@@ -14,35 +14,6 @@ const TEST_BIND_URL: &str = "127.0.0.1";
 
 static PORT: Lazy<AtomicUsize> = Lazy::new(|| AtomicUsize::new(8080));
 
-#[allow(dead_code)]
-pub const BIND_RECEIVER_PDU: &[u8; 0x29] =
-    b"\x00\x00\x00\x29\x00\x00\x00\x01\x00\x00\x00\x00\x00\x00\x00\x02\
-    esmeid\0password\0type\0\x34\x00\x00\0";
-
-#[allow(dead_code)]
-pub const BIND_RECEIVER_RESP_PDU: &[u8; 0x1b] =
-    b"\x00\x00\x00\x1b\x80\x00\x00\x01\x00\x00\x00\x00\x00\x00\x00\x02\
-    TestServer\0";
-
-pub const BIND_TRANSMITTER_PDU: &[u8; 0x29] =
-    b"\x00\x00\x00\x29\x00\x00\x00\x02\x00\x00\x00\x00\x00\x00\x00\x02\
-    esmeid\0password\0type\0\x34\x00\x00\0";
-
-#[allow(dead_code)]
-pub const BIND_TRANSMITTER_RESP_PDU: &[u8; 0x1b] =
-    b"\x00\x00\x00\x1b\x80\x00\x00\x02\x00\x00\x00\x00\x00\x00\x00\x02\
-    TestServer\0";
-
-#[allow(dead_code)]
-pub const BIND_TRANSCEIVER_PDU: &[u8; 0x29] =
-    b"\x00\x00\x00\x29\x00\x00\x00\x09\x00\x00\x00\x00\x00\x00\x00\x02\
-    esmeid\0password\0type\0\x34\x00\x00\0";
-
-#[allow(dead_code)]
-pub const BIND_TRANSCEIVER_RESP_PDU: &[u8; 0x1b] =
-    b"\x00\x00\x00\x1b\x80\x00\x00\x09\x00\x00\x00\x00\x00\x00\x00\x02\
-    TestServer\0";
-
 fn next_port() -> usize {
     return PORT.fetch_add(1, Ordering::Relaxed);
 }
