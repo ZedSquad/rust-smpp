@@ -409,5 +409,7 @@ fn when_we_receive_submit_sm_we_respond_with_resp() {
 // TODO: return DR
 // TODO: return MO
 // Later: client app + system test that allows us to compare with CloudHopper
-// Later: different bind types
+// Later: smpp session states (spec 2.2)
+// Later: sc_interface_version TLV in bind response
+// Later: Check interface versions in binds and responses, and submit_sm
 // Later: all PDU types and formats
