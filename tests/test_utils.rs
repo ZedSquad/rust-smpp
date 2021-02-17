@@ -1,6 +1,7 @@
 use once_cell::sync::Lazy;
 use std::io;
 use std::sync::atomic::{AtomicUsize, Ordering};
+use std::sync::{Arc, Mutex};
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::TcpStream;
 use tokio::runtime::Runtime;
@@ -8,6 +9,7 @@ use tokio::time::{sleep, Duration};
 
 use smpp::async_result::AsyncResult;
 use smpp::smsc_app;
+use smpp::smsc_app::{BindData, BindError, SmscLogic};
 use smpp::smsc_config::SmscConfig;
 
 const TEST_BIND_URL: &str = "127.0.0.1";
@@ -26,6 +28,19 @@ pub struct TestServer {
 
 impl TestServer {
     pub fn start() -> AsyncResult<TestServer> {
+        struct Logic {}
+        impl SmscLogic for Logic {
+            fn bind(&self, _bind_data: &BindData) -> Result<(), BindError> {
+                Ok(())
+            }
+        }
+
+        Self::start_with_logic(Logic {})
+    }
+
+    pub fn start_with_logic<L: SmscLogic + Send + 'static>(
+        smsc_logic: L,
+    ) -> AsyncResult<TestServer> {
         let _ = env_logger::builder()
             .filter_level(log::LevelFilter::Trace)
             .is_test(true)
@@ -40,7 +55,10 @@ impl TestServer {
             max_open_sockets: 2,
             system_id: String::from("TestServer"),
         };
-        server.runtime.spawn(smsc_app::app(smsc_config));
+        server.runtime.spawn(smsc_app::app(
+            smsc_config,
+            Arc::new(Mutex::new(smsc_logic)),
+        ));
 
         Ok(server)
     }

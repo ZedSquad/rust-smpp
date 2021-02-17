@@ -45,4 +45,8 @@ impl BindTransceiverPdu {
     ) -> Result<Self, PduParseError> {
         Ok(Self(self.0.validate_command_status(command_status)?))
     }
+
+    pub fn bind_data(&self) -> &BindData {
+        &self.0
+    }
 }

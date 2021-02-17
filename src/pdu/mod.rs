@@ -1,5 +1,5 @@
 mod check;
-mod data;
+pub mod data;
 pub mod formats;
 mod operations;
 mod pdu;

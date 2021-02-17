@@ -5,7 +5,7 @@ use std::error;
 use std::io;
 use std::io::Cursor;
 use std::net::SocketAddr;
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 use tokio::io::AsyncReadExt;
 use tokio::net::{TcpListener, TcpStream};
 use tokio::sync::{Semaphore, TryAcquireError};
@@ -18,12 +18,39 @@ use crate::pdu::{
 };
 use crate::smsc_config::SmscConfig;
 
-pub fn run(config: SmscConfig) -> AsyncResult<()> {
-    let rt = tokio::runtime::Runtime::new()?;
-    rt.block_on(app(config))
+pub use crate::pdu::data::bind_data::BindData;
+pub use crate::pdu::data::bind_resp_data::BindRespData;
+
+pub enum BindError {
+    IncorrectPassword,
+    InternalError,
 }
 
-pub async fn app(config: SmscConfig) -> AsyncResult<()> {
+impl From<BindError> for PduStatus {
+    fn from(e: BindError) -> PduStatus {
+        match e {
+            BindError::IncorrectPassword => PduStatus::ESME_RINVPASWD,
+            BindError::InternalError => PduStatus::ESME_RSYSERR,
+        }
+    }
+}
+
+pub trait SmscLogic {
+    fn bind(&self, bind_data: &BindData) -> Result<(), BindError>;
+}
+
+pub fn run<L: SmscLogic + Send + 'static>(
+    config: SmscConfig,
+    smsc_logic: Arc<Mutex<L>>,
+) -> AsyncResult<()> {
+    let rt = tokio::runtime::Runtime::new()?;
+    rt.block_on(app(config, smsc_logic))
+}
+
+pub async fn app<L: SmscLogic + Send + 'static>(
+    config: SmscConfig,
+    smsc_logic: Arc<Mutex<L>>,
+) -> AsyncResult<()> {
     info!("Starting");
     let sem = Arc::new(Semaphore::new(config.max_open_sockets));
     let listener = TcpListener::bind(&config.bind_address).await?;
@@ -33,12 +60,15 @@ pub async fn app(config: SmscConfig) -> AsyncResult<()> {
         let (tcp_stream, socket_addr) = listener.accept().await?;
         let sem_clone = Arc::clone(&sem);
         let config_clone = config.clone();
+        let smsc_logic_clone = Arc::clone(&smsc_logic);
         tokio::spawn(async move {
             let aqu = sem_clone.try_acquire();
             match aqu {
                 Ok(_guard) => {
                     info!("Connection {} - opened", socket_addr);
-                    let result = process(tcp_stream, &config_clone).await;
+                    let result =
+                        process(tcp_stream, &config_clone, smsc_logic_clone)
+                            .await;
                     log_result(result, socket_addr);
                 }
                 Err(TryAcquireError::NoPermits) => {
@@ -81,6 +111,7 @@ enum ProcessError {
     PduParseError(PduParseError),
     UnexpectedPduType(UnexpectedPduType),
     IoError(io::Error),
+    InternalError(String),
 }
 
 impl ProcessError {
@@ -89,6 +120,10 @@ impl ProcessError {
             command_id,
             sequence_number,
         })
+    }
+
+    fn new_internal_error(message: &str) -> Self {
+        ProcessError::InternalError(String::from(message))
     }
 }
 
@@ -119,6 +154,7 @@ impl Display for ProcessError {
                 )
             }
             ProcessError::IoError(e) => e.to_string(),
+            ProcessError::InternalError(s) => String::from(s),
         };
         formatter.write_str(&s)
     }
@@ -126,9 +162,10 @@ impl Display for ProcessError {
 
 impl error::Error for ProcessError {}
 
-async fn process(
+async fn process<L: SmscLogic>(
     tcp_stream: TcpStream,
     config: &SmscConfig,
+    smsc_logic: Arc<Mutex<L>>,
 ) -> Result<bool, ProcessError> {
     let mut connection = SmppConnection::new(tcp_stream);
     loop {
@@ -137,7 +174,8 @@ async fn process(
             Ok(pdu) => {
                 if let Some(pdu) = pdu {
                     let sequence_number = pdu.sequence_number.value;
-                    match handle_pdu(pdu, config).await {
+                    match handle_pdu(pdu, config, Arc::clone(&smsc_logic)).await
+                    {
                         Ok(response) => {
                             info!("=> {:?}", response);
                             connection.write_pdu(&response).await?
@@ -201,36 +239,72 @@ fn handle_pdu_parse_error(error: &PduParseError) -> Pdu {
     }
 }
 
-async fn handle_pdu(
+fn handle_bind_pdu<L: SmscLogic>(
     pdu: Pdu,
     config: &SmscConfig,
+    smsc_logic: Arc<Mutex<L>>,
+) -> Result<Pdu, ProcessError> {
+    let mut command_status = PduStatus::ESME_ROK;
+
+    let ret_body = match pdu.body() {
+        PduBody::BindReceiver(body) => {
+            match smsc_logic.lock().unwrap().bind(body.bind_data()) {
+                Ok(()) => Ok(BindReceiverRespPdu::new(&config.system_id)
+                    .unwrap()
+                    .into()),
+                Err(e) => {
+                    command_status = e.into();
+                    Ok(BindReceiverRespPdu::new_error().into())
+                }
+            }
+        }
+        PduBody::BindTransmitter(body) => {
+            match smsc_logic.lock().unwrap().bind(body.bind_data()) {
+                Ok(()) => Ok(BindTransmitterRespPdu::new(&config.system_id)
+                    .unwrap()
+                    .into()),
+                Err(e) => {
+                    command_status = e.into();
+                    Ok(BindTransmitterRespPdu::new_error().into())
+                }
+            }
+        }
+        PduBody::BindTransceiver(body) => {
+            match smsc_logic.lock().unwrap().bind(body.bind_data()) {
+                Ok(()) => Ok(BindTransceiverRespPdu::new(&config.system_id)
+                    .unwrap()
+                    .into()),
+                Err(e) => {
+                    command_status = e.into();
+                    Ok(BindTransceiverRespPdu::new_error().into())
+                }
+            }
+        }
+        // This function should only be called with a Bind PDU
+        _ => Err(ProcessError::new_internal_error(
+            "handle_bind_pdu called with non-bind PDU!",
+        )),
+    }?;
+    Pdu::new(command_status as u32, pdu.sequence_number.value, ret_body)
+        .map_err(|e| e.into())
+}
+
+async fn handle_pdu<L: SmscLogic>(
+    pdu: Pdu,
+    config: &SmscConfig,
+    smsc_logic: Arc<Mutex<L>>,
 ) -> Result<Pdu, ProcessError> {
     info!("<= {:?}", pdu);
     match pdu.body() {
-        PduBody::BindReceiver(_body) => Pdu::new(
-            PduStatus::ESME_ROK as u32,
-            pdu.sequence_number.value,
-            BindReceiverRespPdu::new(&config.system_id).unwrap().into(),
-        )
-        .map_err(|e| e.into()),
-
-        PduBody::BindTransmitter(_body) => Pdu::new(
-            PduStatus::ESME_ROK as u32,
-            pdu.sequence_number.value,
-            BindTransmitterRespPdu::new(&config.system_id)
-                .unwrap()
-                .into(),
-        )
-        .map_err(|e| e.into()),
-
-        PduBody::BindTransceiver(_body) => Pdu::new(
-            PduStatus::ESME_ROK as u32,
-            pdu.sequence_number.value,
-            BindTransceiverRespPdu::new(&config.system_id)
-                .unwrap()
-                .into(),
-        )
-        .map_err(|e| e.into()),
+        PduBody::BindReceiver(_body) => {
+            handle_bind_pdu(pdu, config, smsc_logic).map_err(|e| e.into())
+        }
+        PduBody::BindTransmitter(_body) => {
+            handle_bind_pdu(pdu, config, smsc_logic).map_err(|e| e.into())
+        }
+        PduBody::BindTransceiver(_body) => {
+            handle_bind_pdu(pdu, config, smsc_logic).map_err(|e| e.into())
+        }
 
         PduBody::EnquireLink(_body) => Pdu::new(
             PduStatus::ESME_ROK as u32,
