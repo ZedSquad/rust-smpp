@@ -2,9 +2,9 @@ use env_logger::Env;
 use log::*;
 use std::sync::{Arc, Mutex};
 
-use smpp::smsc_app;
-use smpp::smsc_app::{BindData, BindError, SmscLogic};
-use smpp::smsc_config::SmscConfig;
+use smpp::smsc;
+use smpp::smsc::SmscConfig;
+use smpp::smsc::{BindData, BindError, SmscLogic};
 
 fn main() {
     let smsc_config = SmscConfig {
@@ -25,7 +25,7 @@ fn main() {
     }
     let logic = Arc::new(Mutex::new(Logic {}));
 
-    let res = smsc_app::run(smsc_config, logic);
+    let res = smsc::run(smsc_config, logic);
 
     match res {
         Ok(_) => info!("Done"),

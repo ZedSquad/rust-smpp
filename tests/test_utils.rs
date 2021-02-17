@@ -8,9 +8,8 @@ use tokio::runtime::Runtime;
 use tokio::time::{sleep, Duration};
 
 use smpp::async_result::AsyncResult;
-use smpp::smsc_app;
-use smpp::smsc_app::{BindData, BindError, SmscLogic};
-use smpp::smsc_config::SmscConfig;
+use smpp::smsc;
+use smpp::smsc::{BindData, BindError, SmscConfig, SmscLogic};
 
 const TEST_BIND_URL: &str = "127.0.0.1";
 
@@ -55,10 +54,9 @@ impl TestServer {
             max_open_sockets: 2,
             system_id: String::from("TestServer"),
         };
-        server.runtime.spawn(smsc_app::app(
-            smsc_config,
-            Arc::new(Mutex::new(smsc_logic)),
-        ));
+        server
+            .runtime
+            .spawn(smsc::app(smsc_config, Arc::new(Mutex::new(smsc_logic))));
 
         Ok(server)
     }

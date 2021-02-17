@@ -16,28 +16,7 @@ use crate::pdu::{
     CheckOutcome, EnquireLinkRespPdu, GenericNackPdu, Pdu, PduBody,
     PduParseError, PduParseErrorBody, PduStatus, SubmitSmRespPdu,
 };
-use crate::smsc_config::SmscConfig;
-
-pub use crate::pdu::data::bind_data::BindData;
-pub use crate::pdu::data::bind_resp_data::BindRespData;
-
-pub enum BindError {
-    IncorrectPassword,
-    InternalError,
-}
-
-impl From<BindError> for PduStatus {
-    fn from(e: BindError) -> PduStatus {
-        match e {
-            BindError::IncorrectPassword => PduStatus::ESME_RINVPASWD,
-            BindError::InternalError => PduStatus::ESME_RSYSERR,
-        }
-    }
-}
-
-pub trait SmscLogic {
-    fn bind(&self, bind_data: &BindData) -> Result<(), BindError>;
-}
+use crate::smsc::{SmscConfig, SmscLogic};
 
 pub fn run<L: SmscLogic + Send + 'static>(
     config: SmscConfig,

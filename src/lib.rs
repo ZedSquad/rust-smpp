@@ -1,5 +1,4 @@
 pub mod async_result;
 pub mod pdu;
-pub mod smsc_app;
-pub mod smsc_config;
+pub mod smsc;
 mod unittest_utils;

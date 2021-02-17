@@ -2,7 +2,7 @@ use std::io;
 use std::iter;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 
-use smpp::smsc_app::{BindData, BindError, SmscLogic};
+use smpp::smsc::{BindData, BindError, SmscLogic};
 
 mod test_utils;
 
