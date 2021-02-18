@@ -5,10 +5,10 @@ use std::error;
 use std::io;
 use std::io::Cursor;
 use std::net::SocketAddr;
-use std::sync::{Arc, Mutex};
+use std::sync::Arc;
 use tokio::io::AsyncReadExt;
 use tokio::net::{TcpListener, TcpStream};
-use tokio::sync::{Semaphore, TryAcquireError};
+use tokio::sync::{Mutex, Semaphore, TryAcquireError};
 
 use crate::async_result::AsyncResult;
 use crate::pdu::{
@@ -18,15 +18,15 @@ use crate::pdu::{
 };
 use crate::smsc::{SmscConfig, SmscLogic};
 
-pub fn run<L: SmscLogic + Send + 'static>(
+pub fn run<L: SmscLogic + Send + Sync + 'static>(
     config: SmscConfig,
-    smsc_logic: Arc<Mutex<L>>,
+    smsc_logic: L,
 ) -> AsyncResult<()> {
     let rt = tokio::runtime::Runtime::new()?;
-    rt.block_on(app(config, smsc_logic))
+    rt.block_on(app(config, Arc::new(Mutex::new(smsc_logic))))
 }
 
-pub async fn app<L: SmscLogic + Send + 'static>(
+pub async fn app<L: SmscLogic + Send + Sync + 'static>(
     config: SmscConfig,
     smsc_logic: Arc<Mutex<L>>,
 ) -> AsyncResult<()> {
@@ -218,7 +218,7 @@ fn handle_pdu_parse_error(error: &PduParseError) -> Pdu {
     }
 }
 
-fn handle_bind_pdu<L: SmscLogic>(
+async fn handle_bind_pdu<L: SmscLogic>(
     pdu: Pdu,
     config: &SmscConfig,
     smsc_logic: Arc<Mutex<L>>,
@@ -227,7 +227,8 @@ fn handle_bind_pdu<L: SmscLogic>(
 
     let ret_body = match pdu.body() {
         PduBody::BindReceiver(body) => {
-            match smsc_logic.lock().unwrap().bind(body.bind_data()) {
+            let logic = smsc_logic.lock().await;
+            match logic.bind(body.bind_data()).await {
                 Ok(()) => Ok(BindReceiverRespPdu::new(&config.system_id)
                     .unwrap()
                     .into()),
@@ -237,25 +238,27 @@ fn handle_bind_pdu<L: SmscLogic>(
                 }
             }
         }
-        PduBody::BindTransmitter(body) => {
-            match smsc_logic.lock().unwrap().bind(body.bind_data()) {
-                Ok(()) => Ok(BindTransmitterRespPdu::new(&config.system_id)
-                    .unwrap()
-                    .into()),
-                Err(e) => {
-                    command_status = e.into();
-                    Ok(BindTransmitterRespPdu::new_error().into())
-                }
-            }
-        }
         PduBody::BindTransceiver(body) => {
-            match smsc_logic.lock().unwrap().bind(body.bind_data()) {
+            let logic = smsc_logic.lock().await;
+            match logic.bind(body.bind_data()).await {
                 Ok(()) => Ok(BindTransceiverRespPdu::new(&config.system_id)
                     .unwrap()
                     .into()),
                 Err(e) => {
                     command_status = e.into();
                     Ok(BindTransceiverRespPdu::new_error().into())
+                }
+            }
+        }
+        PduBody::BindTransmitter(body) => {
+            let logic = smsc_logic.lock().await;
+            match logic.bind(body.bind_data()).await {
+                Ok(()) => Ok(BindTransmitterRespPdu::new(&config.system_id)
+                    .unwrap()
+                    .into()),
+                Err(e) => {
+                    command_status = e.into();
+                    Ok(BindTransmitterRespPdu::new_error().into())
                 }
             }
         }
@@ -276,13 +279,19 @@ async fn handle_pdu<L: SmscLogic>(
     info!("<= {:?}", pdu);
     match pdu.body() {
         PduBody::BindReceiver(_body) => {
-            handle_bind_pdu(pdu, config, smsc_logic).map_err(|e| e.into())
+            handle_bind_pdu(pdu, config, smsc_logic)
+                .await
+                .map_err(|e| e.into())
         }
         PduBody::BindTransmitter(_body) => {
-            handle_bind_pdu(pdu, config, smsc_logic).map_err(|e| e.into())
+            handle_bind_pdu(pdu, config, smsc_logic)
+                .await
+                .map_err(|e| e.into())
         }
         PduBody::BindTransceiver(_body) => {
-            handle_bind_pdu(pdu, config, smsc_logic).map_err(|e| e.into())
+            handle_bind_pdu(pdu, config, smsc_logic)
+                .await
+                .map_err(|e| e.into())
         }
 
         PduBody::EnquireLink(_body) => Pdu::new(

@@ -1,3 +1,5 @@
+use async_trait::async_trait;
+
 use crate::pdu::data::bind_data::BindData;
 use crate::pdu::PduStatus;
 
@@ -15,6 +17,7 @@ impl From<BindError> for PduStatus {
     }
 }
 
+#[async_trait]
 pub trait SmscLogic {
-    fn bind(&self, bind_data: &BindData) -> Result<(), BindError>;
+    async fn bind(&self, bind_data: &BindData) -> Result<(), BindError>;
 }

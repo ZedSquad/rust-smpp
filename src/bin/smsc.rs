@@ -1,6 +1,6 @@
+use async_trait::async_trait;
 use env_logger::Env;
 use log::*;
-use std::sync::{Arc, Mutex};
 
 use smpp::smsc;
 use smpp::smsc::SmscConfig;
@@ -18,14 +18,15 @@ fn main() {
 
     // Always consider all system_id/password combinations valid
     struct Logic {}
+
+    #[async_trait]
     impl SmscLogic for Logic {
-        fn bind(&self, _bind_data: &BindData) -> Result<(), BindError> {
+        async fn bind(&self, _bind_data: &BindData) -> Result<(), BindError> {
             Ok(())
         }
     }
-    let logic = Arc::new(Mutex::new(Logic {}));
 
-    let res = smsc::run(smsc_config, logic);
+    let res = smsc::run(smsc_config, Logic {});
 
     match res {
         Ok(_) => info!("Done"),

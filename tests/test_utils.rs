@@ -1,10 +1,12 @@
+use async_trait::async_trait;
 use once_cell::sync::Lazy;
 use std::io;
 use std::sync::atomic::{AtomicUsize, Ordering};
-use std::sync::{Arc, Mutex};
+use std::sync::Arc;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::TcpStream;
 use tokio::runtime::Runtime;
+use tokio::sync::Mutex;
 use tokio::time::{sleep, Duration};
 
 use smpp::async_result::AsyncResult;
@@ -28,8 +30,13 @@ pub struct TestServer {
 impl TestServer {
     pub fn start() -> AsyncResult<TestServer> {
         struct Logic {}
+
+        #[async_trait]
         impl SmscLogic for Logic {
-            fn bind(&self, _bind_data: &BindData) -> Result<(), BindError> {
+            async fn bind(
+                &self,
+                _bind_data: &BindData,
+            ) -> Result<(), BindError> {
                 Ok(())
             }
         }
@@ -37,7 +44,7 @@ impl TestServer {
         Self::start_with_logic(Logic {})
     }
 
-    pub fn start_with_logic<L: SmscLogic + Send + 'static>(
+    pub fn start_with_logic<L: SmscLogic + Send + Sync + 'static>(
         smsc_logic: L,
     ) -> AsyncResult<TestServer> {
         let _ = env_logger::builder()

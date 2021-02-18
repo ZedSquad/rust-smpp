@@ -1,3 +1,4 @@
+use async_trait::async_trait;
 use std::io;
 use std::iter;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
@@ -48,8 +49,10 @@ fn when_we_receive_bind_transceiver_we_respond_with_resp() {
 #[test]
 fn when_we_bind_with_incorrect_password_we_receive_error() {
     struct PwIsAlwaysWrong {}
+
+    #[async_trait]
     impl SmscLogic for PwIsAlwaysWrong {
-        fn bind(&self, _bind_data: &BindData) -> Result<(), BindError> {
+        async fn bind(&self, _bind_data: &BindData) -> Result<(), BindError> {
             Err(BindError::IncorrectPassword)
         }
     }
@@ -294,7 +297,9 @@ impl TestSetup {
         Self { server }
     }
 
-    fn new_with_logic<L: SmscLogic + Send + 'static>(smsc_logic: L) -> Self {
+    fn new_with_logic<L: SmscLogic + Send + Sync + 'static>(
+        smsc_logic: L,
+    ) -> Self {
         let server = TestServer::start_with_logic(smsc_logic).unwrap();
         Self { server }
     }
