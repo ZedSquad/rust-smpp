@@ -17,6 +17,73 @@ const TEST_BIND_URL: &str = "127.0.0.1";
 
 static PORT: Lazy<AtomicUsize> = Lazy::new(|| AtomicUsize::new(8080));
 
+/// Setup for running tests that send and receive PDUs
+pub struct TestSetup {
+    server: TestServer,
+}
+
+#[allow(dead_code)]
+impl TestSetup {
+    pub fn new() -> Self {
+        let server = TestServer::start().unwrap();
+        Self { server }
+    }
+
+    pub fn new_with_logic<L: SmscLogic + Send + Sync + 'static>(
+        smsc_logic: L,
+    ) -> Self {
+        let server = TestServer::start_with_logic(smsc_logic).unwrap();
+        Self { server }
+    }
+
+    async fn send_exp(
+        &self,
+        input: &[u8],
+        expected_output: &[u8],
+    ) -> TestClient {
+        let mut client = TestClient::connect_to(&self.server).await.unwrap();
+        client.stream.write(input).await.unwrap();
+
+        let resp = client.read_n(expected_output.len()).await;
+        assert_eq!(bytes_as_string(&resp), bytes_as_string(expected_output));
+        client
+    }
+
+    pub fn send_and_expect_response(
+        &self,
+        input: &[u8],
+        expected_output: &[u8],
+    ) {
+        self.server.runtime.block_on(async {
+            self.send_exp(input, expected_output).await;
+        })
+    }
+
+    pub fn send_and_expect_error_response(
+        &self,
+        input: &[u8],
+        expected_output: &[u8],
+        expected_error: &str,
+    ) {
+        self.server.runtime.block_on(async {
+            let mut client = self.send_exp(input, expected_output).await;
+
+            // Since this is an error, server should drop the connection
+            let resp = client.stream.read_u8().await.unwrap_err();
+            assert_eq!(&resp.to_string(), expected_error);
+        })
+    }
+}
+
+// TODO: allow and disallow binding via username+password (pluggable validator)
+// TODO: receive MT (pluggable handler)
+// TODO: return DR
+// TODO: return MO
+// Later: client app + system test that allows us to compare with CloudHopper
+// Later: smpp session states (spec 2.2)
+// Later: sc_interface_version TLV in bind response
+// Later: Check interface versions in binds and responses, and submit_sm
+// Later: all PDU types and formats
 fn next_port() -> usize {
     return PORT.fetch_add(1, Ordering::Relaxed);
 }
@@ -27,6 +94,7 @@ pub struct TestServer {
     pub bind_address: String,
 }
 
+#[allow(dead_code)]
 impl TestServer {
     pub fn start() -> AsyncResult<TestServer> {
         struct Logic {}
@@ -74,6 +142,7 @@ pub struct TestClient {
     pub stream: TcpStream,
 }
 
+#[allow(dead_code)]
 impl TestClient {
     pub async fn connect_to(server: &TestServer) -> AsyncResult<TestClient> {
         // Force the runtime to actually do something: seems to mean
@@ -100,13 +169,11 @@ impl TestClient {
         }
     }
 
-    #[allow(dead_code)]
     pub async fn write_str(&mut self, output: &str) -> AsyncResult<()> {
         self.stream.write_all(output.as_bytes()).await?;
         Ok(())
     }
 
-    #[allow(dead_code)]
     pub async fn read_string(&mut self) -> AsyncResult<String> {
         let mut buf = vec![0; 1024];
         let n = self.stream.read(&mut buf).await?;
@@ -114,7 +181,6 @@ impl TestClient {
         Ok(ret)
     }
 
-    #[allow(dead_code)]
     pub async fn read_n_maybe(
         &mut self,
         n: usize,
@@ -127,7 +193,6 @@ impl TestClient {
         Ok(bytes)
     }
 
-    #[allow(dead_code)]
     pub async fn read_n(&mut self, n: usize) -> Vec<u8> {
         self.read_n_maybe(n)
             .await
