@@ -21,7 +21,10 @@ fn main() {
 
     #[async_trait]
     impl SmscLogic for Logic {
-        async fn bind(&self, _bind_data: &BindData) -> Result<(), BindError> {
+        async fn bind(
+            &mut self,
+            _bind_data: &BindData,
+        ) -> Result<(), BindError> {
             Ok(())
         }
     }

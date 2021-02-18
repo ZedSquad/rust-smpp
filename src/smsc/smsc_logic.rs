@@ -19,5 +19,5 @@ impl From<BindError> for PduStatus {
 
 #[async_trait]
 pub trait SmscLogic {
-    async fn bind(&self, bind_data: &BindData) -> Result<(), BindError>;
+    async fn bind(&mut self, bind_data: &BindData) -> Result<(), BindError>;
 }

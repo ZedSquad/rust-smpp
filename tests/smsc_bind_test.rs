@@ -49,7 +49,10 @@ fn when_we_bind_with_incorrect_password_we_receive_error() {
 
     #[async_trait]
     impl SmscLogic for PwIsAlwaysWrong {
-        async fn bind(&self, _bind_data: &BindData) -> Result<(), BindError> {
+        async fn bind(
+            &mut self,
+            _bind_data: &BindData,
+        ) -> Result<(), BindError> {
             Err(BindError::IncorrectPassword)
         }
     }
@@ -90,7 +93,54 @@ fn when_we_receive_enquire_link_we_respond_with_resp() {
     );
 }
 
-// TODO: allow and disallow binding via username+password (pluggable validator)
+use std::sync::{Arc, Mutex};
+
+#[test]
+fn when_we_receive_multiple_binds_we_can_keep_track() {
+    struct TrackingLogic {
+        num_binds: Arc<Mutex<u32>>,
+    }
+
+    #[async_trait]
+    impl SmscLogic for TrackingLogic {
+        async fn bind(
+            &mut self,
+            _bind_data: &BindData,
+        ) -> Result<(), BindError> {
+            *self.num_binds.lock().unwrap() += 1;
+            println!("Bind number: {}", self.num_binds.lock().unwrap());
+            Ok(())
+        }
+    }
+
+    let num_binds = Arc::new(Mutex::new(0));
+    let logic = TrackingLogic {
+        num_binds: Arc::clone(&num_binds),
+    };
+
+    let t = TestSetup::new_with_logic(logic);
+    t.send_and_expect_response(
+        b"\x00\x00\x00\x29\x00\x00\x00\x09\x00\x00\x00\x00\x00\x00\x00\x06\
+        esmeid\0password\0type\0\x34\x00\x00\0",
+        b"\x00\x00\x00\x1b\x80\x00\x00\x09\x00\x00\x00\x00\x00\x00\x00\x06\
+        TestServer\0",
+    );
+    t.send_and_expect_response(
+        b"\x00\x00\x00\x29\x00\x00\x00\x01\x00\x00\x00\x00\x00\x00\x00\x06\
+        esmeid\0password\0type\0\x34\x00\x00\0",
+        b"\x00\x00\x00\x1b\x80\x00\x00\x01\x00\x00\x00\x00\x00\x00\x00\x06\
+        TestServer\0",
+    );
+    t.send_and_expect_response(
+        b"\x00\x00\x00\x29\x00\x00\x00\x02\x00\x00\x00\x00\x00\x00\x00\x06\
+        esmeid\0password\0type\0\x34\x00\x00\0",
+        b"\x00\x00\x00\x1b\x80\x00\x00\x02\x00\x00\x00\x00\x00\x00\x00\x06\
+        TestServer\0",
+    );
+
+    assert_eq!(*num_binds.lock().unwrap(), 3);
+}
+
 // TODO: receive MT (pluggable handler)
 // TODO: return DR
 // TODO: return MO

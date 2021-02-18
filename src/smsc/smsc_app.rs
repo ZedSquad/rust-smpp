@@ -227,7 +227,7 @@ async fn handle_bind_pdu<L: SmscLogic>(
 
     let ret_body = match pdu.body() {
         PduBody::BindReceiver(body) => {
-            let logic = smsc_logic.lock().await;
+            let mut logic = smsc_logic.lock().await;
             match logic.bind(body.bind_data()).await {
                 Ok(()) => Ok(BindReceiverRespPdu::new(&config.system_id)
                     .unwrap()
@@ -239,7 +239,7 @@ async fn handle_bind_pdu<L: SmscLogic>(
             }
         }
         PduBody::BindTransceiver(body) => {
-            let logic = smsc_logic.lock().await;
+            let mut logic = smsc_logic.lock().await;
             match logic.bind(body.bind_data()).await {
                 Ok(()) => Ok(BindTransceiverRespPdu::new(&config.system_id)
                     .unwrap()
@@ -251,7 +251,7 @@ async fn handle_bind_pdu<L: SmscLogic>(
             }
         }
         PduBody::BindTransmitter(body) => {
-            let logic = smsc_logic.lock().await;
+            let mut logic = smsc_logic.lock().await;
             match logic.bind(body.bind_data()).await {
                 Ok(()) => Ok(BindTransmitterRespPdu::new(&config.system_id)
                     .unwrap()

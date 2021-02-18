@@ -102,7 +102,7 @@ impl TestServer {
         #[async_trait]
         impl SmscLogic for Logic {
             async fn bind(
-                &self,
+                &mut self,
                 _bind_data: &BindData,
             ) -> Result<(), BindError> {
                 Ok(())
