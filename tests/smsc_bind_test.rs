@@ -164,3 +164,4 @@ fn when_we_receive_multiple_binds_we_can_keep_track() {
 // Later: sc_interface_version TLV in bind response
 // Later: Check interface versions in binds and responses, and submit_sm
 // Later: all PDU types and formats
+// Later: cargo features e.g. smsc, esme, pdu
