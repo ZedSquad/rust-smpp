@@ -1,3 +1,8 @@
+use async_trait::async_trait;
+
+use smpp::pdu::{SubmitSmPdu, SubmitSmRespPdu};
+use smpp::smsc::{BindData, BindError, SmscLogic, SubmitSmError};
+
 mod test_utils;
 
 use test_utils::TestSetup;
@@ -29,11 +34,30 @@ fn when_we_receive_submit_sm_we_respond_with_resp() {
     pdu.extend(b"hihi"); //                short_message = hihi
 
     let mut resp: Vec<u8> = Vec::new();
-    resp.extend(b"\x00\x00\x00\x11"); //  command_length = 17
+    resp.extend(b"\x00\x00\x00\x1a"); //  command_length = 17
     resp.extend(b"\x80\x00\x00\x04"); //      command_id = submit_sm_resp
     resp.extend(b"\x00\x00\x00\x00"); //  command_status = ESME_ROK
     resp.extend(b"\x00\x00\x00\x03"); // sequence_number = 3
-    resp.extend(b"\x00"); //                  message_id = ""
+    resp.extend(b"mymessage\x00"); //         message_id = "mymessage"
 
-    TestSetup::new().send_and_expect_response(&pdu, &resp);
+    struct Logic {}
+
+    #[async_trait]
+    impl SmscLogic for Logic {
+        async fn bind(
+            &mut self,
+            _bind_data: &BindData,
+        ) -> Result<(), BindError> {
+            Ok(())
+        }
+
+        async fn submit_sm(
+            &mut self,
+            _pdu: &SubmitSmPdu,
+        ) -> Result<SubmitSmRespPdu, SubmitSmError> {
+            Ok(SubmitSmRespPdu::new("mymessage").unwrap())
+        }
+    }
+
+    TestSetup::new_with_logic(Logic {}).send_and_expect_response(&pdu, &resp);
 }

@@ -1,6 +1,7 @@
 use async_trait::async_trait;
 
-use smpp::smsc::{BindData, BindError, SmscLogic};
+use smpp::pdu::{SubmitSmPdu, SubmitSmRespPdu};
+use smpp::smsc::{BindData, BindError, SmscLogic, SubmitSmError};
 
 mod test_utils;
 
@@ -54,6 +55,13 @@ fn when_we_bind_with_incorrect_password_we_receive_error() {
             _bind_data: &BindData,
         ) -> Result<(), BindError> {
             Err(BindError::IncorrectPassword)
+        }
+
+        async fn submit_sm(
+            &mut self,
+            _pdu: &SubmitSmPdu,
+        ) -> Result<SubmitSmRespPdu, SubmitSmError> {
+            panic!("submit_sm not implemented");
         }
     }
 
@@ -110,6 +118,13 @@ fn when_we_receive_multiple_binds_we_can_keep_track() {
             *self.num_binds.lock().unwrap() += 1;
             println!("Bind number: {}", self.num_binds.lock().unwrap());
             Ok(())
+        }
+
+        async fn submit_sm(
+            &mut self,
+            _pdu: &SubmitSmPdu,
+        ) -> Result<SubmitSmRespPdu, SubmitSmError> {
+            panic!("submit_sm not implemented");
         }
     }
 

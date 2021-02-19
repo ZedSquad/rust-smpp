@@ -2,9 +2,10 @@ use async_trait::async_trait;
 use env_logger::Env;
 use log::*;
 
+use smpp::pdu::{SubmitSmPdu, SubmitSmRespPdu};
 use smpp::smsc;
 use smpp::smsc::SmscConfig;
-use smpp::smsc::{BindData, BindError, SmscLogic};
+use smpp::smsc::{BindData, BindError, SmscLogic, SubmitSmError};
 
 fn main() {
     let smsc_config = SmscConfig {
@@ -26,6 +27,13 @@ fn main() {
             _bind_data: &BindData,
         ) -> Result<(), BindError> {
             Ok(())
+        }
+
+        async fn submit_sm(
+            &mut self,
+            _pdu: &SubmitSmPdu,
+        ) -> Result<SubmitSmRespPdu, SubmitSmError> {
+            Err(SubmitSmError::InternalError)
         }
     }
 

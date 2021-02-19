@@ -301,12 +301,22 @@ async fn handle_pdu<L: SmscLogic>(
         )
         .map_err(|e| e.into()),
 
-        PduBody::SubmitSm(_body) => Pdu::new(
-            PduStatus::ESME_ROK as u32,
-            pdu.sequence_number.value,
-            SubmitSmRespPdu::new("").unwrap().into(),
-        )
-        .map_err(|e| e.into()),
+        PduBody::SubmitSm(body) => {
+            let mut command_status = PduStatus::ESME_ROK;
+            let resp = match smsc_logic.lock().await.submit_sm(body).await {
+                Ok(resp) => resp,
+                Err(e) => {
+                    command_status = e.into();
+                    SubmitSmRespPdu::new_error().into()
+                }
+            };
+            Pdu::new(
+                command_status as u32,
+                pdu.sequence_number.value,
+                resp.into(),
+            )
+            .map_err(|e| e.into())
+        }
 
         _ => Err(ProcessError::new_unexpected_pdu_type(
             pdu.command_id().value,

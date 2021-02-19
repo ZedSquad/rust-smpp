@@ -10,8 +10,9 @@ use tokio::sync::Mutex;
 use tokio::time::{sleep, Duration};
 
 use smpp::async_result::AsyncResult;
+use smpp::pdu::{SubmitSmPdu, SubmitSmRespPdu};
 use smpp::smsc;
-use smpp::smsc::{BindData, BindError, SmscConfig, SmscLogic};
+use smpp::smsc::{BindData, BindError, SmscConfig, SmscLogic, SubmitSmError};
 
 const TEST_BIND_URL: &str = "127.0.0.1";
 
@@ -75,15 +76,6 @@ impl TestSetup {
     }
 }
 
-// TODO: allow and disallow binding via username+password (pluggable validator)
-// TODO: receive MT (pluggable handler)
-// TODO: return DR
-// TODO: return MO
-// Later: client app + system test that allows us to compare with CloudHopper
-// Later: smpp session states (spec 2.2)
-// Later: sc_interface_version TLV in bind response
-// Later: Check interface versions in binds and responses, and submit_sm
-// Later: all PDU types and formats
 fn next_port() -> usize {
     return PORT.fetch_add(1, Ordering::Relaxed);
 }
@@ -106,6 +98,13 @@ impl TestServer {
                 _bind_data: &BindData,
             ) -> Result<(), BindError> {
                 Ok(())
+            }
+
+            async fn submit_sm(
+                &mut self,
+                _pdu: &SubmitSmPdu,
+            ) -> Result<SubmitSmRespPdu, SubmitSmError> {
+                Err(SubmitSmError::InternalError)
             }
         }
 
