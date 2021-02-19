@@ -4,14 +4,13 @@ version = "0.0.1"
 authors = ["Andy Balaam", "The Rust SMPP Developers"]
 license = "MIT OR Apache-2.0"
 readme = "README.md"
-# repository = ""
-# documentation = ""
-# homepage = ""
+repository = "https://gitlab.com/andybalaam/rust-smpp"
+homepage = "https://gitlab.com/andybalaam/rust-smpp"
 description = """
 SMPP protocol support (client and server).
 """
-keywords = ["smpp"]
-# categories = []
+keywords = ["smpp", "sms", "smsc", "esme"]
+categories = ["network-programming", "parser-implementations"]
 edition = "2018"
 include = ["src/", "LICENSE-*", "README.md", "CHANGELOG.md"]
 
