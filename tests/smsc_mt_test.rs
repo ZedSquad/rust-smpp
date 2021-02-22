@@ -7,8 +7,8 @@ mod test_utils;
 
 use test_utils::TestSetup;
 
-#[test]
-fn when_we_receive_submit_sm_we_respond_with_resp() {
+#[tokio::test]
+async fn when_we_receive_submit_sm_we_respond_with_resp() {
     let mut pdu: Vec<u8> = Vec::new();
     pdu.extend(b"\x00\x00\x00\x3d"); //   command_length = 61
     pdu.extend(b"\x00\x00\x00\x04"); //       command_id = submit_sm
@@ -61,5 +61,8 @@ fn when_we_receive_submit_sm_we_respond_with_resp() {
         }
     }
 
-    TestSetup::new_with_logic(Logic {}).send_and_expect_response(&pdu, &resp);
+    TestSetup::new_with_logic(Logic {})
+        .await
+        .send_and_expect_response(&pdu, &resp)
+        .await;
 }

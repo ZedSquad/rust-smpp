@@ -5,7 +5,6 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::TcpStream;
-use tokio::runtime::Runtime;
 use tokio::sync::Mutex;
 use tokio::time::{sleep, Duration};
 
@@ -25,15 +24,15 @@ pub struct TestSetup {
 
 #[allow(dead_code)]
 impl TestSetup {
-    pub fn new() -> Self {
-        let server = TestServer::start().unwrap();
+    pub async fn new() -> Self {
+        let server = TestServer::start().await.unwrap();
         Self { server }
     }
 
-    pub fn new_with_logic<L: SmscLogic + Send + Sync + 'static>(
+    pub async fn new_with_logic<L: SmscLogic + Send + Sync + 'static>(
         smsc_logic: L,
     ) -> Self {
-        let server = TestServer::start_with_logic(smsc_logic).unwrap();
+        let server = TestServer::start_with_logic(smsc_logic).await.unwrap();
         Self { server }
     }
 
@@ -50,29 +49,25 @@ impl TestSetup {
         client
     }
 
-    pub fn send_and_expect_response(
+    pub async fn send_and_expect_response(
         &self,
         input: &[u8],
         expected_output: &[u8],
     ) {
-        self.server.runtime.block_on(async {
-            self.send_exp(input, expected_output).await;
-        })
+        self.send_exp(input, expected_output).await;
     }
 
-    pub fn send_and_expect_error_response(
+    pub async fn send_and_expect_error_response(
         &self,
         input: &[u8],
         expected_output: &[u8],
         expected_error: &str,
     ) {
-        self.server.runtime.block_on(async {
-            let mut client = self.send_exp(input, expected_output).await;
+        let mut client = self.send_exp(input, expected_output).await;
 
-            // Since this is an error, server should drop the connection
-            let resp = client.stream.read_u8().await.unwrap_err();
-            assert_eq!(&resp.to_string(), expected_error);
-        })
+        // Since this is an error, server should drop the connection
+        let resp = client.stream.read_u8().await.unwrap_err();
+        assert_eq!(&resp.to_string(), expected_error);
     }
 }
 
@@ -82,13 +77,12 @@ fn next_port() -> usize {
 
 /// A test server listening on the test port
 pub struct TestServer {
-    pub runtime: Runtime,
     pub bind_address: String,
 }
 
 #[allow(dead_code)]
 impl TestServer {
-    pub fn start() -> AsyncResult<TestServer> {
+    pub async fn start() -> AsyncResult<TestServer> {
         struct Logic {}
 
         #[async_trait]
@@ -108,18 +102,18 @@ impl TestServer {
             }
         }
 
-        Self::start_with_logic(Logic {})
+        Self::start_with_logic(Logic {}).await
     }
 
-    pub fn start_with_logic<L: SmscLogic + Send + Sync + 'static>(
+    pub async fn start_with_logic<L: SmscLogic + Send + Sync + 'static>(
         smsc_logic: L,
     ) -> AsyncResult<TestServer> {
         let _ = env_logger::builder()
             .filter_level(log::LevelFilter::Trace)
             .is_test(true)
             .try_init();
+
         let server = TestServer {
-            runtime: tokio::runtime::Runtime::new()?,
             bind_address: format!("{}:{}", TEST_BIND_URL, next_port()),
         };
 
@@ -128,9 +122,13 @@ impl TestServer {
             max_open_sockets: 2,
             system_id: String::from("TestServer"),
         };
-        server
-            .runtime
-            .spawn(smsc::app(smsc_config, Arc::new(Mutex::new(smsc_logic))));
+
+        tokio::spawn(smsc::app(smsc_config, Arc::new(Mutex::new(smsc_logic))));
+
+        // Force the runtime to actually do something: seems to mean
+        // the server is running when we connect to it.  Hopefully
+        // there is a better way?
+        sleep(Duration::from_millis(1)).await;
 
         Ok(server)
     }
@@ -144,14 +142,6 @@ pub struct TestClient {
 #[allow(dead_code)]
 impl TestClient {
     pub async fn connect_to(server: &TestServer) -> AsyncResult<TestClient> {
-        // Force the runtime to actually do something: seems to mean
-        // the server is running when we connect to it.  Hopefully
-        // there is a better way?
-        server
-            .runtime
-            .spawn(async { sleep(Duration::from_millis(1)).await })
-            .await?;
-
         // Connect to the server, retrying with 10ms delay if we fail
         let mut i: u8 = 0;
         loop {
