@@ -8,7 +8,6 @@ use tokio::io::{AsyncWrite, AsyncWriteExt};
 // TODO: PDU Types, from spec section 3.1
 // COctetStringDecimal
 // COctetStringHex
-// OctetString
 
 pub type WriteStream = dyn AsyncWrite + Send + Unpin;
 

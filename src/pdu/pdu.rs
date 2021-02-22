@@ -701,6 +701,54 @@ mod tests {
         );
     }
 
+    #[tokio::test]
+    async fn write_submit_sm_with_short_message_and_no_tlvs() {
+        let pdu = Pdu::new(
+            0x00000000,
+            0x00000003,
+            SubmitSmPdu::new(
+                "",
+                0x01,
+                0x02,
+                "447000123123",
+                0x03,
+                0x04,
+                "447111222222",
+                0x05,
+                0x01,
+                0x01,
+                "",
+                "",
+                0x01,
+                0x06,
+                0x03,
+                0x07,
+                b"hihi\xfe",
+            )
+            .unwrap()
+            .into(),
+        )
+        .unwrap();
+
+        let mut output = Vec::new();
+        pdu.write(&mut output).await.unwrap();
+
+        assert_eq!(output.len(), 0x3e);
+        assert_eq!(
+            output,
+            b"\
+                \x00\x00\x00\x3e\
+                \x00\x00\x00\x04\
+                \x00\x00\x00\x00\
+                \x00\x00\x00\x03\
+                \x00\
+                \x01\x02447000123123\x00\
+                \x03\x04447111222222\x00\
+                \x05\x01\x01\x00\x00\x01\x06\x03\
+                \x07\x05hihi\xfe"
+        );
+    }
+
     #[test]
     fn parse_valid_submit_sm_with_empty_short_message_and_no_tlvs() {
         const PDU: &[u8; 0x3e] = b"\

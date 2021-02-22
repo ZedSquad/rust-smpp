@@ -1,4 +1,4 @@
-use std::io;
+use std::{convert::TryInto, io};
 
 use crate::pdu::formats::{COctetString, Integer1, OctetString, WriteStream};
 use crate::pdu::pduparseerror::fld;
@@ -79,6 +79,15 @@ impl SubmitSmPdu {
         )?;
         validate_length_1_or_17("validity_period", validity_period.len())?;
 
+        if short_message.len() > 254 {
+            return Err(PduParseError::new(
+                PduParseErrorBody::IncorrectLength(
+                    short_message.len().try_into().unwrap_or(0),
+                    String::from("short_message must be less than 255 bytes."),
+                ),
+            ));
+        }
+
         Ok(Self {
             service_type: COctetString::from_str(
                 service_type,
@@ -124,8 +133,29 @@ impl SubmitSmPdu {
         })
     }
 
-    pub async fn write(&self, _stream: &mut WriteStream) -> io::Result<()> {
-        todo!()
+    pub async fn write(&self, stream: &mut WriteStream) -> io::Result<()> {
+        self.service_type.write(stream).await?;
+        self.source_addr_ton.write(stream).await?;
+        self.source_addr_npi.write(stream).await?;
+        self.source_addr.write(stream).await?;
+        self.dest_addr_ton.write(stream).await?;
+        self.dest_addr_npi.write(stream).await?;
+        self.destination_addr.write(stream).await?;
+        self.esm_class.write(stream).await?;
+        self.protocol_id.write(stream).await?;
+        self.priority_flag.write(stream).await?;
+        self.schedule_delivery_time.write(stream).await?;
+        self.validity_period.write(stream).await?;
+        self.registered_delivery.write(stream).await?;
+        self.replace_if_present_flag.write(stream).await?;
+        self.data_coding.write(stream).await?;
+        self.sm_default_msg_id.write(stream).await?;
+        assert!(self.short_message.len() < 255);
+        Integer1::new(self.short_message.len() as u8)
+            .write(stream)
+            .await?;
+        self.short_message.write(stream).await?;
+        Ok(())
     }
 
     pub fn parse(
