@@ -32,6 +32,7 @@ fn when_we_receive_submit_sm_we_respond_with_resp() {
     pdu.extend(b"\x00"); //            sm_default_msg_id = 0
     pdu.extend(b"\x04"); //                    sm_length = 4
     pdu.extend(b"hihi"); //                short_message = hihi
+    assert_eq!(pdu.len(), 0x3d);
 
     let mut resp: Vec<u8> = Vec::new();
     resp.extend(b"\x00\x00\x00\x1a"); //  command_length = 17
@@ -39,6 +40,7 @@ fn when_we_receive_submit_sm_we_respond_with_resp() {
     resp.extend(b"\x00\x00\x00\x00"); //  command_status = ESME_ROK
     resp.extend(b"\x00\x00\x00\x03"); // sequence_number = 3
     resp.extend(b"mymessage\x00"); //         message_id = "mymessage"
+    assert_eq!(resp.len(), 0x1a);
 
     struct Logic {}
 
