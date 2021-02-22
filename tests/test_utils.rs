@@ -9,7 +9,7 @@ use tokio::sync::Mutex;
 use tokio::time::{sleep, Duration};
 
 use smpp::async_result::AsyncResult;
-use smpp::pdu::{SubmitSmPdu, SubmitSmRespPdu};
+use smpp::pdu::{Pdu, SubmitSmPdu, SubmitSmRespPdu};
 use smpp::smsc;
 use smpp::smsc::{BindData, BindError, SmscConfig, SmscLogic, SubmitSmError};
 
@@ -34,6 +34,10 @@ impl TestSetup {
     ) -> Self {
         let server = TestServer::start_with_logic(smsc_logic).await.unwrap();
         Self { server }
+    }
+
+    pub async fn receive_pdu(&self, _pdu: Pdu) {
+        todo!();
     }
 
     async fn send_exp(

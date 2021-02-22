@@ -8,7 +8,7 @@ use crate::pdu::validate_command_length::validate_command_length;
 use crate::pdu::{
     check, BindReceiverPdu, BindReceiverRespPdu, BindTransceiverPdu,
     BindTransceiverRespPdu, BindTransmitterPdu, BindTransmitterRespPdu,
-    CheckError, CheckOutcome, EnquireLinkPdu, EnquireLinkRespPdu,
+    CheckError, CheckOutcome, DeliverSmPdu, EnquireLinkPdu, EnquireLinkRespPdu,
     GenericNackPdu, PduParseError, PduParseErrorBody, SubmitSmPdu,
     SubmitSmRespPdu,
 };
@@ -25,6 +25,7 @@ pub enum PduBody {
     BindTransceiverResp(BindTransceiverRespPdu),
     BindTransmitter(BindTransmitterPdu),
     BindTransmitterResp(BindTransmitterRespPdu),
+    DeliverSm(DeliverSmPdu),
     EnquireLink(EnquireLinkPdu),
     EnquireLinkResp(EnquireLinkRespPdu),
     GenericNack(GenericNackPdu),
@@ -62,6 +63,9 @@ impl PduBody {
                 b.validate_command_status(command_status)?.into()
             }
             PduBody::BindTransmitterResp(b) => {
+                b.validate_command_status(command_status)?.into()
+            }
+            PduBody::DeliverSm(b) => {
                 b.validate_command_status(command_status)?.into()
             }
             PduBody::EnquireLink(b) => {
@@ -116,6 +120,12 @@ impl From<BindTransmitterPdu> for PduBody {
 impl From<BindTransmitterRespPdu> for PduBody {
     fn from(body: BindTransmitterRespPdu) -> PduBody {
         PduBody::BindTransmitterResp(body)
+    }
+}
+
+impl From<DeliverSmPdu> for PduBody {
+    fn from(body: DeliverSmPdu) -> PduBody {
+        PduBody::DeliverSm(body)
     }
 }
 
@@ -257,6 +267,7 @@ impl Pdu {
             PduBody::BindTransceiverResp(body) => body.write(&mut buf).await?,
             PduBody::BindTransmitter(body) => body.write(&mut buf).await?,
             PduBody::BindTransmitterResp(body) => body.write(&mut buf).await?,
+            PduBody::DeliverSm(body) => body.write(&mut buf).await?,
             PduBody::EnquireLink(body) => body.write(&mut buf).await?,
             PduBody::EnquireLinkResp(body) => body.write(&mut buf).await?,
             PduBody::GenericNack(body) => body.write(&mut buf).await?,
@@ -277,6 +288,7 @@ impl Pdu {
             PduBody::BindTransmitterResp(_) => 0x80000002,
             PduBody::SubmitSm(_) => 0x00000004,
             PduBody::SubmitSmResp(_) => 0x80000004,
+            PduBody::DeliverSm(_) => 0x00000005,
             PduBody::BindTransceiver(_) => 0x00000009,
             PduBody::BindTransceiverResp(_) => 0x80000009,
             PduBody::EnquireLink(_) => 0x00000015,
@@ -312,6 +324,9 @@ pub fn parse_body(
         }
         0x80000004 => {
             SubmitSmRespPdu::parse(bytes, command_status).map(|p| p.into())
+        }
+        0x00000005 => {
+            DeliverSmPdu::parse(bytes, command_status).map(|p| p.into())
         }
         0x00000009 => {
             BindTransceiverPdu::parse(bytes, command_status).map(|p| p.into())
@@ -969,6 +984,99 @@ mod tests {
             Pdu::parse(&mut cursor).unwrap(),
             Pdu::new(0x00000000, 0x0000000A, EnquireLinkRespPdu::new().into())
                 .unwrap()
+        );
+    }
+
+    #[tokio::test]
+    async fn write_deliver_sm_with_short_message_and_no_tlvs() {
+        let pdu = Pdu::new(
+            0x00000000,
+            0x00000003,
+            DeliverSmPdu::new(
+                "",
+                0x01,
+                0x02,
+                "447000123123",
+                0x03,
+                0x04,
+                "447111222222",
+                0x05,
+                0x01,
+                0x01,
+                "",
+                "",
+                0x01,
+                0x06,
+                0x03,
+                0x07,
+                b"hihi\xfe",
+            )
+            .unwrap()
+            .into(),
+        )
+        .unwrap();
+
+        let mut output = Vec::new();
+        pdu.write(&mut output).await.unwrap();
+
+        assert_eq!(output.len(), 0x3e);
+        assert_eq!(
+            output,
+            b"\
+                \x00\x00\x00\x3e\
+                \x00\x00\x00\x05\
+                \x00\x00\x00\x00\
+                \x00\x00\x00\x03\
+                \x00\
+                \x01\x02447000123123\x00\
+                \x03\x04447111222222\x00\
+                \x05\x01\x01\x00\x00\x01\x06\x03\
+                \x07\x05hihi\xfe"
+        );
+    }
+
+    #[test]
+    fn parse_valid_deliver_sm_with_empty_short_message_and_no_tlvs() {
+        const PDU: &[u8; 0x3e] = b"\
+            \x00\x00\x00\x39\
+            \x00\x00\x00\x05\
+            \x00\x00\x00\x00\
+            \x00\x00\x00\x03\
+            \x00\
+            \x00\x00447000123123\x00\
+            \x00\x00447111222222\x00\
+            \x00\x01\x01\x00\x00\x01\x00\x03\
+            \x00\x00extra";
+
+        let mut cursor = Cursor::new(&PDU[..]);
+        assert_eq!(
+            Pdu::parse(&mut cursor).unwrap(),
+            Pdu::new(
+                0x00000000,
+                0x00000003,
+                DeliverSmPdu::new(
+                    "",
+                    0x00,
+                    0x00,
+                    "447000123123",
+                    0x00,
+                    0x00,
+                    "447111222222",
+                    0x00,
+                    0x01,
+                    0x01,
+                    "",
+                    "",
+                    0x01,
+                    0x00,
+                    0x03,
+                    0x00,
+                    &[]
+                )
+                .unwrap()
+                .into()
+            )
+            .unwrap()
         );
     }
 

@@ -4,6 +4,7 @@ pub mod bind_transceiver;
 pub mod bind_transceiver_resp;
 pub mod bind_transmitter;
 pub mod bind_transmitter_resp;
+pub mod deliver_sm;
 pub mod enquire_link;
 pub mod enquire_link_resp;
 pub mod generic_nack;

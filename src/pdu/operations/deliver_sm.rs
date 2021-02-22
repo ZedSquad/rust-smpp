@@ -5,9 +5,9 @@ use crate::pdu::formats::WriteStream;
 use crate::pdu::PduParseError;
 
 #[derive(Debug, PartialEq)]
-pub struct SubmitSmPdu(SmData);
+pub struct DeliverSmPdu(SmData);
 
-impl SubmitSmPdu {
+impl DeliverSmPdu {
     pub fn new(
         service_type: &str,
         source_addr_ton: u8,
@@ -56,7 +56,7 @@ impl SubmitSmPdu {
     pub fn parse(
         bytes: &mut dyn io::BufRead,
         command_status: u32,
-    ) -> Result<SubmitSmPdu, PduParseError> {
+    ) -> Result<DeliverSmPdu, PduParseError> {
         // TODO: validate esm_class for the type of message this is?
         Ok(Self(SmData::parse(bytes, command_status)?))
     }
