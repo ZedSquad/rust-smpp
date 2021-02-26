@@ -26,6 +26,17 @@ pub fn run<L: SmscLogic + Send + Sync + 'static>(
     rt.block_on(app(config, Arc::new(Mutex::new(smsc_logic))))
 }
 
+struct Smsc {
+    connection: Option<Arc<Mutex<SmppConnection>>>,
+}
+
+impl Smsc {
+    fn add_connection(&mut self, connection: Arc<Mutex<SmppConnection>>) {
+        // TODO: stub implementation - will add to some kind of map
+        self.connection = Some(connection);
+    }
+}
+
 pub async fn app<L: SmscLogic + Send + Sync + 'static>(
     config: SmscConfig,
     smsc_logic: Arc<Mutex<L>>,
@@ -33,27 +44,34 @@ pub async fn app<L: SmscLogic + Send + Sync + 'static>(
     info!("Starting");
     let sem = Arc::new(Semaphore::new(config.max_open_sockets));
     let listener = TcpListener::bind(&config.bind_address).await?;
+    let smsc = Arc::new(Mutex::new(Smsc { connection: None }));
     info!("Bound on {}", config.bind_address);
 
     loop {
         let (tcp_stream, socket_addr) = listener.accept().await?;
+        let connection = SmppConnection::new(tcp_stream, socket_addr);
         let sem_clone = Arc::clone(&sem);
         let config_clone = config.clone();
         let smsc_logic_clone = Arc::clone(&smsc_logic);
+        let smsc_clone = Arc::clone(&smsc);
         tokio::spawn(async move {
             let aqu = sem_clone.try_acquire();
             match aqu {
                 Ok(_guard) => {
-                    info!("Connection {} - opened", socket_addr);
-                    let result =
-                        process(tcp_stream, &config_clone, smsc_logic_clone)
-                            .await;
+                    info!("Connection {} - opened", connection.socket_addr);
+                    let result = process(
+                        connection,
+                        &config_clone,
+                        smsc_logic_clone,
+                        smsc_clone,
+                    )
+                    .await;
                     log_result(result, socket_addr);
                 }
                 Err(TryAcquireError::NoPermits) => {
                     error!(
                         "Refused connection {} - too many open sockets",
-                        socket_addr
+                        connection.socket_addr
                     );
                 }
                 Err(TryAcquireError::Closed) => {
@@ -142,26 +160,70 @@ impl Display for ProcessError {
 impl error::Error for ProcessError {}
 
 async fn process<L: SmscLogic>(
-    tcp_stream: TcpStream,
+    connection: SmppConnection,
     config: &SmscConfig,
     smsc_logic: Arc<Mutex<L>>,
+    smsc: Arc<Mutex<Smsc>>,
 ) -> Result<bool, ProcessError> {
-    let mut connection = SmppConnection::new(tcp_stream);
+    struct DisconnectGuard {
+        connection: Arc<Mutex<SmppConnection>>,
+    }
+
+    impl Drop for DisconnectGuard {
+        fn drop(&mut self) {
+            let connection = Arc::clone(&self.connection);
+            tokio::spawn(async move {
+                connection.lock().await.disconnect();
+            });
+        }
+    }
+
+    // Ensure we disconnect connection when we leave this function,
+    // even though we are wrapping it in an Arc so it can be accessed
+    // from elsewhere.
+    let disconnect_guard = DisconnectGuard {
+        connection: Arc::new(Mutex::new(connection)),
+    };
+
+    process_loop(
+        Arc::clone(&disconnect_guard.connection),
+        config,
+        smsc_logic,
+        smsc,
+    )
+    .await
+}
+
+async fn process_loop<L: SmscLogic>(
+    connection: Arc<Mutex<SmppConnection>>,
+    config: &SmscConfig,
+    smsc_logic: Arc<Mutex<L>>,
+    smsc: Arc<Mutex<Smsc>>,
+) -> Result<bool, ProcessError> {
     loop {
-        let pdu = connection.read_pdu().await;
+        let pdu = connection.lock().await.read_pdu().await;
         match pdu {
             Ok(pdu) => {
                 if let Some(pdu) = pdu {
                     let sequence_number = pdu.sequence_number.value;
-                    match handle_pdu(pdu, config, Arc::clone(&smsc_logic)).await
+                    match handle_pdu(
+                        pdu,
+                        Arc::clone(&connection),
+                        config,
+                        Arc::clone(&smsc_logic),
+                        Arc::clone(&smsc),
+                    )
+                    .await
                     {
                         Ok(response) => {
                             info!("=> {:?}", response);
-                            connection.write_pdu(&response).await?
+                            connection.lock().await.write_pdu(&response).await?
                         }
                         Err(e) => {
                             // Couldn't handle this PDU type.  Send a nack...
                             connection
+                                .lock()
+                                .await
                                 .write_pdu(
                                     &Pdu::new(
                                         PduStatus::ESME_RINVCMDID as u32,
@@ -183,7 +245,7 @@ async fn process<L: SmscLogic>(
             Err(pdu_parse_error) => {
                 // Respond with an error
                 let response = handle_pdu_parse_error(&pdu_parse_error);
-                connection.write_pdu(&response).await?;
+                connection.lock().await.write_pdu(&response).await?;
 
                 // Then return the error, so we drop the connection
                 return Err(pdu_parse_error.into());
@@ -220,8 +282,10 @@ fn handle_pdu_parse_error(error: &PduParseError) -> Pdu {
 
 async fn handle_bind_pdu<L: SmscLogic>(
     pdu: Pdu,
+    connection: Arc<Mutex<SmppConnection>>,
     config: &SmscConfig,
     smsc_logic: Arc<Mutex<L>>,
+    smsc: Arc<Mutex<Smsc>>,
 ) -> Result<Pdu, ProcessError> {
     let mut command_status = PduStatus::ESME_ROK;
 
@@ -267,29 +331,38 @@ async fn handle_bind_pdu<L: SmscLogic>(
             "handle_bind_pdu called with non-bind PDU!",
         )),
     }?;
+
+    // If we successfully bound, register this connection so we
+    // know to use it when we receive deliver_sm PDUs later
+    if command_status == PduStatus::ESME_ROK {
+        smsc.lock().await.add_connection(connection);
+    }
+
     Pdu::new(command_status as u32, pdu.sequence_number.value, ret_body)
         .map_err(|e| e.into())
 }
 
 async fn handle_pdu<L: SmscLogic>(
     pdu: Pdu,
+    connection: Arc<Mutex<SmppConnection>>,
     config: &SmscConfig,
     smsc_logic: Arc<Mutex<L>>,
+    smsc: Arc<Mutex<Smsc>>,
 ) -> Result<Pdu, ProcessError> {
     info!("<= {:?}", pdu);
     match pdu.body() {
         PduBody::BindReceiver(_body) => {
-            handle_bind_pdu(pdu, config, smsc_logic)
+            handle_bind_pdu(pdu, connection, config, smsc_logic, smsc)
                 .await
                 .map_err(|e| e.into())
         }
         PduBody::BindTransmitter(_body) => {
-            handle_bind_pdu(pdu, config, smsc_logic)
+            handle_bind_pdu(pdu, connection, config, smsc_logic, smsc)
                 .await
                 .map_err(|e| e.into())
         }
         PduBody::BindTransceiver(_body) => {
-            handle_bind_pdu(pdu, config, smsc_logic)
+            handle_bind_pdu(pdu, connection, config, smsc_logic, smsc)
                 .await
                 .map_err(|e| e.into())
         }
@@ -326,14 +399,19 @@ async fn handle_pdu<L: SmscLogic>(
 }
 
 struct SmppConnection {
-    tcp_stream: TcpStream,
+    tcp_stream: Option<TcpStream>,
+    pub socket_addr: SocketAddr,
     buffer: BytesMut,
 }
 
 impl SmppConnection {
-    pub fn new(tcp_stream: TcpStream) -> SmppConnection {
+    pub fn new(
+        tcp_stream: TcpStream,
+        socket_addr: SocketAddr,
+    ) -> SmppConnection {
         SmppConnection {
-            tcp_stream,
+            tcp_stream: Some(tcp_stream),
+            socket_addr,
             buffer: BytesMut::with_capacity(4096),
         }
     }
@@ -344,14 +422,21 @@ impl SmppConnection {
                 return Ok(Some(pdu));
             }
 
-            if 0 == self.tcp_stream.read_buf(&mut self.buffer).await? {
-                if self.buffer.is_empty() {
-                    return Ok(None);
-                } else {
-                    return Err(PduParseError::new(
-                        PduParseErrorBody::NotEnoughBytes,
-                    ));
+            if let Some(tcp_stream) = &mut self.tcp_stream {
+                if 0 == tcp_stream.read_buf(&mut self.buffer).await? {
+                    if self.buffer.is_empty() {
+                        return Ok(None);
+                    } else {
+                        return Err(PduParseError::new(
+                            PduParseErrorBody::NotEnoughBytes,
+                        ));
+                    }
                 }
+            } else {
+                error!("Attempting to read from a closed connection!");
+                return Err(PduParseError::new(
+                    PduParseErrorBody::NotEnoughBytes.into(),
+                ));
             }
         }
     }
@@ -384,6 +469,15 @@ impl SmppConnection {
     }
 
     async fn write_pdu(&mut self, pdu: &Pdu) -> io::Result<()> {
-        pdu.write(&mut self.tcp_stream).await
+        if let Some(tcp_stream) = &mut self.tcp_stream {
+            pdu.write(tcp_stream).await
+        } else {
+            error!("Attempting to write to a closed connection!");
+            Err(io::ErrorKind::BrokenPipe.into())
+        }
+    }
+
+    fn disconnect(&mut self) {
+        self.tcp_stream.take();
     }
 }

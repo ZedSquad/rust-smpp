@@ -1,5 +1,6 @@
 #[repr(u32)]
 #[allow(non_camel_case_types)]
+#[derive(PartialEq)]
 pub enum PduStatus {
     ESME_ROK = 0x00000000,
     ESME_RINVMSGLEN = 0x00000001,
