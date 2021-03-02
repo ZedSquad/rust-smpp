@@ -181,7 +181,6 @@ async fn when_we_receive_multiple_binds_we_can_keep_track() {
     assert_eq!(*num_binds.lock().unwrap(), 3);
 }
 
-// TODO: receive MT (pluggable handler)
 // TODO: return DR
 // TODO: return MO
 // Later: client app + system test that allows us to compare with CloudHopper
