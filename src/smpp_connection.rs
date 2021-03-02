@@ -11,7 +11,6 @@ use crate::pdu::{CheckOutcome, Pdu, PduParseError, PduParseErrorBody};
 
 pub struct SmppConnection {
     pub socket_addr: SocketAddr,
-    // TODO: try std::sync::Mutex instead of tokio::sync - will make disconnect simpler
     read: Mutex<Option<SmppRead>>,
     write: Mutex<Option<SmppWrite>>,
 }
