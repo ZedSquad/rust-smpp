@@ -29,7 +29,7 @@ pub struct SmData {
     replace_if_present_flag: Integer1,
     data_coding: Integer1,
     sm_default_msg_id: Integer1,
-    short_message: OctetString,
+    pub short_message: OctetString,
     // Issue#2: TLVs
 }
 

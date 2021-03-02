@@ -1,14 +1,15 @@
 use bytes::{Buf, BytesMut};
 use core::fmt::{Display, Formatter};
 use log::*;
-use std::error;
 use std::io;
 use std::io::Cursor;
 use std::net::SocketAddr;
 use std::sync::Arc;
-use tokio::io::AsyncReadExt;
+use std::{error, time::Duration};
+use tokio::io::{split, AsyncReadExt, ReadHalf, WriteHalf};
 use tokio::net::{TcpListener, TcpStream};
 use tokio::sync::{Mutex, Semaphore, TryAcquireError};
+use tokio::time::sleep;
 
 use crate::async_result::AsyncResult;
 use crate::pdu::{
@@ -23,62 +24,166 @@ pub fn run<L: SmscLogic + Send + Sync + 'static>(
     smsc_logic: L,
 ) -> AsyncResult<()> {
     let rt = tokio::runtime::Runtime::new()?;
-    rt.block_on(app(config, Arc::new(Mutex::new(smsc_logic))))
+    rt.block_on(async move {
+        let smsc = Smsc::start(config, smsc_logic).await?;
+        loop {
+            if let Err(e) = smsc.lock().await.stopped().await {
+                return Err(e);
+            }
+            sleep(Duration::from_millis(100)).await;
+            // TODO: notify instead of poll?
+        }
+    })
 }
 
-struct Smsc {
-    connection: Option<Arc<Mutex<SmppConnection>>>,
+pub struct Smsc {
+    connection: Option<Arc<SmppConnection>>,
 }
 
 impl Smsc {
-    fn add_connection(&mut self, connection: Arc<Mutex<SmppConnection>>) {
+    /// Bind to a TCP socket, and return an object that manages
+    /// the list of connected clients.  Spawns a task that deals
+    /// with incoming connections, which itself spawns a further
+    /// new task each time someone connects.
+    pub async fn start<L: SmscLogic + Send + Sync + 'static>(
+        smsc_config: SmscConfig,
+        smsc_logic: L,
+    ) -> AsyncResult<Arc<Mutex<Self>>> {
+        info!("Starting SMSC");
+
+        let smsc = Smsc { connection: None };
+        let smsc = Arc::new(Mutex::new(smsc));
+
+        let listener = TcpListener::bind(&smsc_config.bind_address).await?;
+        info!("Bound on {}", &smsc_config.bind_address);
+
+        // Spawn off a task that deals with incoming connections
+        tokio::spawn(listen_loop(
+            listener,
+            Arc::clone(&smsc),
+            smsc_config,
+            smsc_logic,
+        ));
+
+        Ok(smsc)
+    }
+
+    async fn stopped(&self) -> AsyncResult<()> {
+        // TODO: check whether we are stopped and return an error if so
+        Ok(())
+    }
+
+    pub async fn receive_pdu(&mut self, pdu: Pdu) -> AsyncResult<()> {
+        // TODO: consider retrying after a delay if unable to match DR
+        // TODO: handle MOs separately from DRs
+        // TODO: maybe return a deliver_sm_resp on failure?
+        match pdu.body() {
+            PduBody::DeliverSm(body) => {
+                match body.extract_receipted_message_id() {
+                    Some(message_id) => {
+                        self.receive_pdu_for_message(pdu, message_id).await
+                    }
+                    None => {
+                        Err("Could not extract message ID from supplied PDU."
+                            .into())
+                    }
+                }
+            }
+            _ => Err("Unexpected PDU type.  Currently we can only \
+                    handle deliver_sm PDUs."
+                .into()),
+        }
+    }
+
+    async fn receive_pdu_for_message(
+        &mut self,
+        pdu: Pdu,
+        message_id: String,
+    ) -> AsyncResult<()> {
+        let conn = self.connection_for_message_id(&message_id).await?;
+        // TODO: in order to support a window size to the client, we
+        //       will need to put this PDU into a queue rather than writing
+        //       it immediately here.
+        tokio::spawn(async move {
+            conn.write_pdu(&pdu).await.map_err(
+                |e| error!("Failed to send PDU to client: {}", e), // TODO: give information about the client here
+            )
+        });
+        Ok(())
+    }
+
+    fn add_connection(&mut self, connection: Arc<SmppConnection>) {
         // TODO: stub implementation - will add to some kind of map
         self.connection = Some(connection);
     }
+
+    async fn connection_for_message_id(
+        &mut self,
+        message_id: &str,
+    ) -> AsyncResult<Arc<SmppConnection>> {
+        if let Some(connection) = &self.connection {
+            Ok(Arc::clone(connection))
+        } else {
+            Err(format!(
+                "No client connection found for message with ID {}",
+                message_id
+            )
+            .into())
+        }
+    }
 }
 
-pub async fn app<L: SmscLogic + Send + Sync + 'static>(
+/// Listen for clients connecting, and spawn a new task every time one does
+async fn listen_loop<L: SmscLogic + Send + Sync + 'static>(
+    listener: TcpListener,
+    smsc: Arc<Mutex<Smsc>>,
     config: SmscConfig,
-    smsc_logic: Arc<Mutex<L>>,
-) -> AsyncResult<()> {
-    info!("Starting");
+    logic: L,
+) {
     let sem = Arc::new(Semaphore::new(config.max_open_sockets));
-    let listener = TcpListener::bind(&config.bind_address).await?;
-    let smsc = Arc::new(Mutex::new(Smsc { connection: None }));
-    info!("Bound on {}", config.bind_address);
-
+    let logic = Arc::new(Mutex::new(logic));
     loop {
-        let (tcp_stream, socket_addr) = listener.accept().await?;
-        let connection = SmppConnection::new(tcp_stream, socket_addr);
-        let sem_clone = Arc::clone(&sem);
-        let config_clone = config.clone();
-        let smsc_logic_clone = Arc::clone(&smsc_logic);
-        let smsc_clone = Arc::clone(&smsc);
-        tokio::spawn(async move {
-            let aqu = sem_clone.try_acquire();
-            match aqu {
-                Ok(_guard) => {
-                    info!("Connection {} - opened", connection.socket_addr);
-                    let result = process(
-                        connection,
-                        &config_clone,
-                        smsc_logic_clone,
-                        smsc_clone,
-                    )
-                    .await;
-                    log_result(result, socket_addr);
-                }
-                Err(TryAcquireError::NoPermits) => {
-                    error!(
-                        "Refused connection {} - too many open sockets",
-                        connection.socket_addr
-                    );
-                }
-                Err(TryAcquireError::Closed) => {
-                    error!("Unexpected error: semaphore closed");
-                }
+        match listener.accept().await {
+            Err(e) => {
+                error!("Client connection failed: {}", e);
             }
-        });
+            Ok((tcp_stream, socket_addr)) => {
+                tokio::spawn(process_stream(
+                    Arc::clone(&sem),
+                    SmppConnection::new(tcp_stream, socket_addr),
+                    config.clone(),
+                    Arc::clone(&logic),
+                    Arc::clone(&smsc),
+                ));
+            }
+        }
+    }
+}
+
+async fn process_stream<L: SmscLogic + Send + Sync + 'static>(
+    sem: Arc<Semaphore>,
+    connection: SmppConnection,
+    config: SmscConfig,
+    logic: Arc<Mutex<L>>,
+    smsc: Arc<Mutex<Smsc>>,
+) {
+    let socket_addr = connection.socket_addr.clone();
+    let aqu = sem.try_acquire();
+    match aqu {
+        Ok(_guard) => {
+            info!("Connection {} - opened", socket_addr);
+            let result = process(connection, config, logic, smsc).await;
+            log_result(result, socket_addr);
+        }
+        Err(TryAcquireError::NoPermits) => {
+            error!(
+                "Refused connection {} - too many open sockets",
+                connection.socket_addr
+            );
+        }
+        Err(TryAcquireError::Closed) => {
+            error!("Unexpected error: semaphore closed");
+        }
     }
 }
 
@@ -161,19 +266,18 @@ impl error::Error for ProcessError {}
 
 async fn process<L: SmscLogic>(
     connection: SmppConnection,
-    config: &SmscConfig,
+    config: SmscConfig,
     smsc_logic: Arc<Mutex<L>>,
     smsc: Arc<Mutex<Smsc>>,
 ) -> Result<bool, ProcessError> {
     struct DisconnectGuard {
-        connection: Arc<Mutex<SmppConnection>>,
+        connection: Arc<SmppConnection>,
     }
 
     impl Drop for DisconnectGuard {
         fn drop(&mut self) {
-            let connection = Arc::clone(&self.connection);
-            tokio::spawn(async move {
-                connection.lock().await.disconnect();
+            futures::executor::block_on(async move {
+                self.connection.disconnect().await;
             });
         }
     }
@@ -182,7 +286,7 @@ async fn process<L: SmscLogic>(
     // even though we are wrapping it in an Arc so it can be accessed
     // from elsewhere.
     let disconnect_guard = DisconnectGuard {
-        connection: Arc::new(Mutex::new(connection)),
+        connection: Arc::new(connection),
     };
 
     process_loop(
@@ -195,13 +299,13 @@ async fn process<L: SmscLogic>(
 }
 
 async fn process_loop<L: SmscLogic>(
-    connection: Arc<Mutex<SmppConnection>>,
-    config: &SmscConfig,
+    connection: Arc<SmppConnection>,
+    config: SmscConfig,
     smsc_logic: Arc<Mutex<L>>,
     smsc: Arc<Mutex<Smsc>>,
 ) -> Result<bool, ProcessError> {
     loop {
-        let pdu = connection.lock().await.read_pdu().await;
+        let pdu = connection.read_pdu().await;
         match pdu {
             Ok(pdu) => {
                 if let Some(pdu) = pdu {
@@ -209,7 +313,7 @@ async fn process_loop<L: SmscLogic>(
                     match handle_pdu(
                         pdu,
                         Arc::clone(&connection),
-                        config,
+                        &config,
                         Arc::clone(&smsc_logic),
                         Arc::clone(&smsc),
                     )
@@ -217,13 +321,11 @@ async fn process_loop<L: SmscLogic>(
                     {
                         Ok(response) => {
                             info!("=> {:?}", response);
-                            connection.lock().await.write_pdu(&response).await?
+                            connection.write_pdu(&response).await?
                         }
                         Err(e) => {
                             // Couldn't handle this PDU type.  Send a nack...
                             connection
-                                .lock()
-                                .await
                                 .write_pdu(
                                     &Pdu::new(
                                         PduStatus::ESME_RINVCMDID as u32,
@@ -245,7 +347,7 @@ async fn process_loop<L: SmscLogic>(
             Err(pdu_parse_error) => {
                 // Respond with an error
                 let response = handle_pdu_parse_error(&pdu_parse_error);
-                connection.lock().await.write_pdu(&response).await?;
+                connection.write_pdu(&response).await?;
 
                 // Then return the error, so we drop the connection
                 return Err(pdu_parse_error.into());
@@ -282,7 +384,7 @@ fn handle_pdu_parse_error(error: &PduParseError) -> Pdu {
 
 async fn handle_bind_pdu<L: SmscLogic>(
     pdu: Pdu,
-    connection: Arc<Mutex<SmppConnection>>,
+    connection: Arc<SmppConnection>,
     config: &SmscConfig,
     smsc_logic: Arc<Mutex<L>>,
     smsc: Arc<Mutex<Smsc>>,
@@ -344,7 +446,7 @@ async fn handle_bind_pdu<L: SmscLogic>(
 
 async fn handle_pdu<L: SmscLogic>(
     pdu: Pdu,
-    connection: Arc<Mutex<SmppConnection>>,
+    connection: Arc<SmppConnection>,
     config: &SmscConfig,
     smsc_logic: Arc<Mutex<L>>,
     smsc: Arc<Mutex<Smsc>>,
@@ -398,47 +500,17 @@ async fn handle_pdu<L: SmscLogic>(
     }
 }
 
-struct SmppConnection {
-    tcp_stream: Option<TcpStream>,
-    pub socket_addr: SocketAddr,
+// TODO: split this file into smsc.rs, smpp_connection.rs, smsc_bind.rs,
+//       smsc_submit_sm.rs and maybe others.
+
+struct SmppRead {
+    stream: ReadHalf<TcpStream>,
     buffer: BytesMut,
 }
 
-impl SmppConnection {
-    pub fn new(
-        tcp_stream: TcpStream,
-        socket_addr: SocketAddr,
-    ) -> SmppConnection {
-        SmppConnection {
-            tcp_stream: Some(tcp_stream),
-            socket_addr,
-            buffer: BytesMut::with_capacity(4096),
-        }
-    }
-
-    async fn read_pdu(&mut self) -> Result<Option<Pdu>, PduParseError> {
-        loop {
-            if let Some(pdu) = self.parse_pdu()? {
-                return Ok(Some(pdu));
-            }
-
-            if let Some(tcp_stream) = &mut self.tcp_stream {
-                if 0 == tcp_stream.read_buf(&mut self.buffer).await? {
-                    if self.buffer.is_empty() {
-                        return Ok(None);
-                    } else {
-                        return Err(PduParseError::new(
-                            PduParseErrorBody::NotEnoughBytes,
-                        ));
-                    }
-                }
-            } else {
-                error!("Attempting to read from a closed connection!");
-                return Err(PduParseError::new(
-                    PduParseErrorBody::NotEnoughBytes.into(),
-                ));
-            }
-        }
+impl SmppRead {
+    async fn read_own_buf(&mut self) -> Result<usize, io::Error> {
+        self.stream.read_buf(&mut self.buffer).await
     }
 
     fn parse_pdu(&mut self) -> Result<Option<Pdu>, PduParseError> {
@@ -467,17 +539,78 @@ impl SmppConnection {
             // malformed, so not knowing what type it is is forgivable.
         }
     }
+}
 
-    async fn write_pdu(&mut self, pdu: &Pdu) -> io::Result<()> {
-        if let Some(tcp_stream) = &mut self.tcp_stream {
-            pdu.write(tcp_stream).await
+struct SmppWrite {
+    stream: WriteHalf<TcpStream>,
+}
+
+impl SmppWrite {}
+
+struct SmppConnection {
+    pub socket_addr: SocketAddr,
+    // TODO: try std::sync::Mutex instead of tokio::sync - will make disconnect simpler
+    read: Mutex<Option<SmppRead>>,
+    write: Mutex<Option<SmppWrite>>,
+}
+
+impl SmppConnection {
+    pub fn new(
+        tcp_stream: TcpStream,
+        socket_addr: SocketAddr,
+    ) -> SmppConnection {
+        let (read_stream, write_stream) = split(tcp_stream);
+        let buffer = BytesMut::with_capacity(4096);
+        let read = SmppRead {
+            stream: read_stream,
+            buffer,
+        };
+        let write = SmppWrite {
+            stream: write_stream,
+        };
+        SmppConnection {
+            read: Mutex::new(Some(read)),
+            write: Mutex::new(Some(write)),
+            socket_addr,
+        }
+    }
+
+    async fn read_pdu(&self) -> Result<Option<Pdu>, PduParseError> {
+        loop {
+            let mut read = self.read.lock().await;
+            if let Some(read) = &mut *read {
+                if let Some(pdu) = read.parse_pdu()? {
+                    return Ok(Some(pdu));
+                }
+
+                if 0 == read.read_own_buf().await? {
+                    if read.buffer.is_empty() {
+                        return Ok(None);
+                    } else {
+                        return Err(PduParseError::new(
+                            PduParseErrorBody::NotEnoughBytes,
+                        ));
+                    }
+                }
+            } else {
+                error!("Attempting to read from a closed connection!");
+                return Err(PduParseError::new(
+                    PduParseErrorBody::NotEnoughBytes.into(),
+                ));
+            }
+        }
+    }
+    async fn write_pdu(&self, pdu: &Pdu) -> io::Result<()> {
+        if let Some(write) = &mut *self.write.lock().await {
+            pdu.write(&mut write.stream).await
         } else {
             error!("Attempting to write to a closed connection!");
             Err(io::ErrorKind::BrokenPipe.into())
         }
     }
 
-    fn disconnect(&mut self) {
-        self.tcp_stream.take();
+    async fn disconnect(&self) {
+        self.read.lock().await.take();
+        self.write.lock().await.take();
     }
 }

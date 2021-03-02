@@ -1,4 +1,5 @@
 use std::io;
+use std::str::from_utf8;
 
 use crate::pdu::data::sm_data::SmData;
 use crate::pdu::formats::WriteStream;
@@ -67,4 +68,56 @@ impl DeliverSmPdu {
     ) -> Result<Self, PduParseError> {
         Ok(Self(self.0.validate_command_status(command_status)?))
     }
+
+    pub fn extract_receipted_message_id(&self) -> Option<String> {
+        if self.0.short_message.value.starts_with(b"id:") {
+            // TODO: assumes the whole short message is just id
+            from_utf8(&self.0.short_message.value[3..])
+                .ok()
+                .map(String::from)
+        } else {
+            None
+        }
+    }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn when_id_is_at_start_of_short_message_and_no_tlv_we_can_extract_id() {
+        let deliver_sm = DeliverSmPdu::new(
+            "",
+            0,
+            0,
+            "",
+            0,
+            0,
+            "",
+            0,
+            0,
+            0,
+            "",
+            "",
+            0,
+            0,
+            0,
+            0,
+            b"id:0123456789",
+        )
+        .unwrap();
+        assert_eq!(
+            deliver_sm.extract_receipted_message_id().unwrap(),
+            "0123456789"
+        );
+    }
+}
+
+// TODO: Extract message id from receipted_message_id TLV
+// TODO: parse short_message more fully - e.g. id not at start
+// TODO: Explicitly allow/disallow short_message ids longer than 10?
+// TODO: Explicitly allow/disallow short_message ids that are not decimal?
+// TODO: https://smpp.org/SMPP_v3_4_Issue1_2.pdf Appendix B says ID is
+//       NULL-terminated ("C-Octet String (Decimal)"), but that
+//       seems unlikely - check real-world usage.

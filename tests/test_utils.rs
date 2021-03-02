@@ -10,51 +10,80 @@ use tokio::time::{sleep, Duration};
 
 use smpp::async_result::AsyncResult;
 use smpp::pdu::{Pdu, SubmitSmPdu, SubmitSmRespPdu};
-use smpp::smsc;
-use smpp::smsc::{BindData, BindError, SmscConfig, SmscLogic, SubmitSmError};
+use smpp::smsc::{
+    BindData, BindError, Smsc, SmscConfig, SmscLogic, SubmitSmError,
+};
 
 const TEST_BIND_URL: &str = "127.0.0.1";
 
 static PORT: Lazy<AtomicUsize> = Lazy::new(|| AtomicUsize::new(8080));
 
+pub struct DefaultLogic {}
+
+#[async_trait]
+impl SmscLogic for DefaultLogic {
+    async fn bind(&mut self, _bind_data: &BindData) -> Result<(), BindError> {
+        Ok(())
+    }
+
+    async fn submit_sm(
+        &mut self,
+        _pdu: &SubmitSmPdu,
+    ) -> Result<SubmitSmRespPdu, SubmitSmError> {
+        Err(SubmitSmError::InternalError)
+    }
+}
+
 /// Setup for running tests that send and receive PDUs
 pub struct TestSetup {
     server: TestServer,
+    pub client: TestClient,
 }
 
 #[allow(dead_code)]
 impl TestSetup {
-    pub async fn new() -> Self {
+    pub async fn new() -> TestSetup {
         let server = TestServer::start().await.unwrap();
-        Self { server }
+        let client = TestClient::connect_to(&server).await.unwrap();
+
+        TestSetup { server, client }
     }
 
     pub async fn new_with_logic<L: SmscLogic + Send + Sync + 'static>(
         smsc_logic: L,
     ) -> Self {
         let server = TestServer::start_with_logic(smsc_logic).await.unwrap();
-        Self { server }
+        let client = TestClient::connect_to(&server).await.unwrap();
+        Self { server, client }
     }
 
-    pub async fn receive_pdu(&self, _pdu: Pdu) {
-        todo!();
+    pub async fn bind(mut self) -> Self {
+        self.send_and_expect_response(
+            b"\x00\x00\x00\x29\x00\x00\x00\x09\x00\x00\x00\x00\x00\x00\x00\x07\
+        esmeid\0password\0type\0\x34\x00\x00\0",
+            b"\x00\x00\x00\x1b\x80\x00\x00\x09\x00\x00\x00\x00\x00\x00\x00\x07\
+        TestServer\0",
+        )
+        .await;
+        self
     }
 
-    async fn send_exp(
-        &self,
-        input: &[u8],
-        expected_output: &[u8],
-    ) -> TestClient {
-        let mut client = TestClient::connect_to(&self.server).await.unwrap();
-        client.stream.write(input).await.unwrap();
+    pub async fn receive_pdu(&self, pdu: Pdu) -> AsyncResult<()> {
+        self.server.smsc.lock().await.receive_pdu(pdu).await
+    }
 
-        let resp = client.read_n(expected_output.len()).await;
+    pub async fn new_client(&mut self) {
+        self.client = TestClient::connect_to(&self.server).await.unwrap();
+    }
+
+    async fn send_exp(&mut self, input: &[u8], expected_output: &[u8]) {
+        self.client.stream.write(input).await.unwrap();
+        let resp = self.client.read_n(expected_output.len()).await;
         assert_eq!(bytes_as_string(&resp), bytes_as_string(expected_output));
-        client
     }
 
     pub async fn send_and_expect_response(
-        &self,
+        &mut self,
         input: &[u8],
         expected_output: &[u8],
     ) {
@@ -62,15 +91,15 @@ impl TestSetup {
     }
 
     pub async fn send_and_expect_error_response(
-        &self,
+        &mut self,
         input: &[u8],
         expected_output: &[u8],
         expected_error: &str,
     ) {
-        let mut client = self.send_exp(input, expected_output).await;
+        self.send_exp(input, expected_output).await;
 
         // Since this is an error, server should drop the connection
-        let resp = client.stream.read_u8().await.unwrap_err();
+        let resp = self.client.stream.read_u8().await.unwrap_err();
         assert_eq!(&resp.to_string(), expected_error);
     }
 }
@@ -81,53 +110,36 @@ fn next_port() -> usize {
 
 /// A test server listening on the test port
 pub struct TestServer {
+    pub smsc: Arc<Mutex<Smsc>>,
     pub bind_address: String,
 }
 
 #[allow(dead_code)]
 impl TestServer {
     pub async fn start() -> AsyncResult<TestServer> {
-        struct Logic {}
-
-        #[async_trait]
-        impl SmscLogic for Logic {
-            async fn bind(
-                &mut self,
-                _bind_data: &BindData,
-            ) -> Result<(), BindError> {
-                Ok(())
-            }
-
-            async fn submit_sm(
-                &mut self,
-                _pdu: &SubmitSmPdu,
-            ) -> Result<SubmitSmRespPdu, SubmitSmError> {
-                Err(SubmitSmError::InternalError)
-            }
-        }
-
-        Self::start_with_logic(Logic {}).await
+        let logic = DefaultLogic {};
+        TestServer::start_with_logic(logic).await
     }
 
     pub async fn start_with_logic<L: SmscLogic + Send + Sync + 'static>(
         smsc_logic: L,
-    ) -> AsyncResult<TestServer> {
+    ) -> AsyncResult<Self> {
         let _ = env_logger::builder()
             .filter_level(log::LevelFilter::Trace)
             .is_test(true)
             .try_init();
 
-        let server = TestServer {
-            bind_address: format!("{}:{}", TEST_BIND_URL, next_port()),
-        };
+        let bind_address = format!("{}:{}", TEST_BIND_URL, next_port());
 
         let smsc_config = SmscConfig {
-            bind_address: String::from(&server.bind_address),
+            bind_address: String::from(&bind_address),
             max_open_sockets: 2,
             system_id: String::from("TestServer"),
         };
 
-        tokio::spawn(smsc::app(smsc_config, Arc::new(Mutex::new(smsc_logic))));
+        let smsc = Smsc::start(smsc_config, smsc_logic).await.unwrap();
+
+        let server = TestServer { smsc, bind_address };
 
         // Force the runtime to actually do something: seems to mean
         // the server is running when we connect to it.  Hopefully

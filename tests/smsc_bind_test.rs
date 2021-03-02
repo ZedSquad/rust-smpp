@@ -76,7 +76,7 @@ async fn when_we_bind_with_incorrect_password_we_receive_error() {
 
     let logic = PwIsAlwaysWrong {};
 
-    let t = TestSetup::new_with_logic(logic).await;
+    let mut t = TestSetup::new_with_logic(logic).await;
     t.send_and_expect_response(
         // bind_transceiver
         b"\x00\x00\x00\x29\x00\x00\x00\x09\x00\x00\x00\x00\x00\x00\x00\x06\
@@ -85,6 +85,8 @@ async fn when_we_bind_with_incorrect_password_we_receive_error() {
         b"\x00\x00\x00\x10\x80\x00\x00\x09\x00\x00\x00\x0e\x00\x00\x00\x06",
     )
     .await;
+
+    t.new_client().await;
     t.send_and_expect_response(
         // bind_receiver
         b"\x00\x00\x00\x29\x00\x00\x00\x01\x00\x00\x00\x00\x00\x00\x00\x06\
@@ -93,6 +95,8 @@ async fn when_we_bind_with_incorrect_password_we_receive_error() {
         b"\x00\x00\x00\x10\x80\x00\x00\x01\x00\x00\x00\x0e\x00\x00\x00\x06",
     )
     .await;
+
+    t.new_client().await;
     t.send_and_expect_response(
         // bind_transmitter
         b"\x00\x00\x00\x29\x00\x00\x00\x02\x00\x00\x00\x00\x00\x00\x00\x06\
@@ -131,7 +135,6 @@ async fn when_we_receive_multiple_binds_we_can_keep_track() {
             _bind_data: &BindData,
         ) -> Result<(), BindError> {
             *self.num_binds.lock().unwrap() += 1;
-            println!("Bind number: {}", self.num_binds.lock().unwrap());
             Ok(())
         }
 
@@ -148,7 +151,7 @@ async fn when_we_receive_multiple_binds_we_can_keep_track() {
         num_binds: Arc::clone(&num_binds),
     };
 
-    let t = TestSetup::new_with_logic(logic).await;
+    let mut t = TestSetup::new_with_logic(logic).await;
     t.send_and_expect_response(
         b"\x00\x00\x00\x29\x00\x00\x00\x09\x00\x00\x00\x00\x00\x00\x00\x06\
         esmeid\0password\0type\0\x34\x00\x00\0",
@@ -156,6 +159,8 @@ async fn when_we_receive_multiple_binds_we_can_keep_track() {
         TestServer\0",
     )
     .await;
+
+    t.new_client().await;
     t.send_and_expect_response(
         b"\x00\x00\x00\x29\x00\x00\x00\x01\x00\x00\x00\x00\x00\x00\x00\x06\
         esmeid\0password\0type\0\x34\x00\x00\0",
@@ -163,6 +168,8 @@ async fn when_we_receive_multiple_binds_we_can_keep_track() {
         TestServer\0",
     )
     .await;
+
+    t.new_client().await;
     t.send_and_expect_response(
         b"\x00\x00\x00\x29\x00\x00\x00\x02\x00\x00\x00\x00\x00\x00\x00\x06\
         esmeid\0password\0type\0\x34\x00\x00\0",
