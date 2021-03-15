@@ -1,6 +1,8 @@
 use async_trait::async_trait;
 
-use smpp::pdu::{DeliverSmPdu, Pdu, SubmitSmPdu, SubmitSmRespPdu};
+use smpp::pdu::{
+    DeliverEsmClass, DeliverSmPdu, Pdu, SubmitSmPdu, SubmitSmRespPdu,
+};
 use smpp::smsc::{BindData, BindError, SmscLogic, SubmitSmError};
 
 mod test_utils;
@@ -62,7 +64,7 @@ fn new_deliver_sm_pdu(short_message: &[u8]) -> Pdu {
             0,
             0,
             "dest_addr",
-            0,
+            DeliverEsmClass::SmscDeliveryReceipt as u8,
             0x34,
             1,
             "",

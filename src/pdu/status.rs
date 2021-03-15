@@ -1,3 +1,4 @@
+/// https://smpp.org/SMPP_v3_4_Issue1_2.pdf section 5.1.3
 #[repr(u32)]
 #[allow(non_camel_case_types)]
 #[derive(PartialEq)]

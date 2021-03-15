@@ -20,7 +20,7 @@ pub struct SmData {
     dest_addr_ton: Integer1,
     dest_addr_npi: Integer1,
     destination_addr: COctetString,
-    esm_class: Integer1,
+    esm_class: Integer1, // TODO: consider using EsmClass enum
     protocol_id: Integer1,
     priority_flag: Integer1,
     schedule_delivery_time: COctetString,
