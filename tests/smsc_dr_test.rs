@@ -1,7 +1,8 @@
 use async_trait::async_trait;
 
 use smpp::pdu::{
-    DeliverEsmClass, DeliverSmPdu, Pdu, SubmitSmPdu, SubmitSmRespPdu,
+    DeliverEsmClass, DeliverSmPdu, Pdu, SubmitEsmClass, SubmitSmPdu,
+    SubmitSmRespPdu,
 };
 use smpp::smsc::{BindData, BindError, SmscLogic, SubmitSmError};
 
@@ -74,7 +75,6 @@ fn new_deliver_sm_pdu(short_message: &[u8]) -> Pdu {
             3,
             0,
             short_message,
-            // TODO: correct esm_class here and in submit_sm tests
             // TODO: check for correct esm class in parsing/smsc code?
             // TODO: more complete short_message and/or TLV receipted_message_id
         )
@@ -96,7 +96,7 @@ async fn new_submit_sm(sequence_number: u32) -> Vec<u8> {
             0,
             0,
             "dest_addr",
-            0,
+            SubmitEsmClass::Default as u8,
             0x34,
             1,
             "",

@@ -9,7 +9,7 @@ mod status;
 mod validate_command_length;
 
 pub use check::{CheckError, CheckOutcome};
-pub use esm_class::DeliverEsmClass;
+pub use esm_class::{DeliverEsmClass, SubmitEsmClass};
 pub use formats::OctetStringCreationError;
 pub use operations::bind_receiver::BindReceiverPdu;
 pub use operations::bind_receiver_resp::BindReceiverRespPdu;

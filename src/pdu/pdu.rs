@@ -370,6 +370,8 @@ mod tests {
     use std::io::Cursor;
 
     use super::*;
+    use crate::pdu::esm_class::{SubmitMessageMode, SubmitMessageType};
+    use crate::pdu::SubmitEsmClass;
 
     const BIND_TRANSMITTER_RESP_PDU_PLUS_EXTRA: &[u8; 0x1b + 0xa] =
         b"\x00\x00\x00\x1b\x80\x00\x00\x02\x00\x00\x00\x00\x00\x00\x00\x02\
@@ -698,7 +700,7 @@ mod tests {
                     0x00,
                     0x00,
                     "447111222222",
-                    0x00,
+                    SubmitEsmClass::Default as u8,
                     0x01,
                     0x01,
                     "",
@@ -729,7 +731,8 @@ mod tests {
                 0x03,
                 0x04,
                 "447111222222",
-                0x05,
+                SubmitMessageMode::DatagramMode as u8
+                    | SubmitMessageType::EsmeDeliveryAcknowledgement as u8,
                 0x01,
                 0x01,
                 "",
@@ -759,7 +762,7 @@ mod tests {
                 \x00\
                 \x01\x02447000123123\x00\
                 \x03\x04447111222222\x00\
-                \x05\x01\x01\x00\x00\x01\x06\x03\
+                \x09\x01\x01\x00\x00\x01\x06\x03\
                 \x07\x05hihi\xfe"
         );
     }
@@ -791,7 +794,7 @@ mod tests {
                     0x00,
                     0x00,
                     "447111222222",
-                    0x00,
+                    SubmitEsmClass::Default as u8,
                     0x01,
                     0x01,
                     "",
