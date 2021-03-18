@@ -11,9 +11,9 @@ const MAX_LENGTH_ADDRESS_RANGE: usize = 41;
 
 #[derive(Debug, PartialEq)]
 pub struct BindData {
-    system_id: COctetString,
+    pub system_id: COctetString,
     password: COctetString,
-    system_type: COctetString,
+    pub system_type: COctetString,
     interface_version: Integer1,
     addr_ton: Integer1,
     addr_npi: Integer1,

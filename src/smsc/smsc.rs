@@ -1,4 +1,5 @@
 use log::*;
+use std::collections::HashMap;
 use std::error;
 use std::fmt::{Display, Formatter};
 use std::io;
@@ -15,7 +16,7 @@ use crate::pdu::{
     EnquireLinkRespPdu, GenericNackPdu, Pdu, PduBody, PduParseError, PduStatus,
     SubmitSmRespPdu,
 };
-use crate::smpp_connection::SmppConnection;
+use crate::smpp_connection::{EsmeId, SmppConnection};
 use crate::smsc::{SmscConfig, SmscLogic};
 
 pub fn run<L: SmscLogic + Send + Sync + 'static>(
@@ -36,7 +37,7 @@ pub fn run<L: SmscLogic + Send + Sync + 'static>(
 }
 
 pub struct Smsc {
-    connection: Option<Arc<SmppConnection>>,
+    connections: HashMap<EsmeId, Arc<SmppConnection>>,
 }
 
 impl Smsc {
@@ -50,7 +51,9 @@ impl Smsc {
     ) -> AsyncResult<Arc<Mutex<Self>>> {
         info!("Starting SMSC");
 
-        let smsc = Smsc { connection: None };
+        let smsc = Smsc {
+            connections: HashMap::new(),
+        };
         let smsc = Arc::new(Mutex::new(smsc));
 
         let listener = TcpListener::bind(&smsc_config.bind_address).await?;
@@ -113,15 +116,30 @@ impl Smsc {
     }
 
     pub fn add_connection(&mut self, connection: Arc<SmppConnection>) {
-        // TODO: stub implementation - will add to some kind of map
-        self.connection = Some(connection);
+        if let Some(esme_id) = connection.bound_esme_id() {
+            self.connections.insert(esme_id, connection);
+        } else {
+            error!(
+                "Failed to add connection {} because it is not bound!",
+                connection.socket_addr
+            );
+        }
+    }
+
+    pub async fn remove_connection(
+        &mut self,
+        connection: &Arc<SmppConnection>,
+    ) {
+        connection.disconnect().await;
+        self.connections
+            .remove(&connection.bound_esme_id().unwrap());
     }
 
     async fn connection_for_message_id(
         &mut self,
         message_id: &str,
     ) -> AsyncResult<Arc<SmppConnection>> {
-        if let Some(connection) = &self.connection {
+        if let Some(connection) = &self.connections.values().next() {
             Ok(Arc::clone(connection))
         } else {
             Err(format!(
@@ -271,13 +289,18 @@ async fn process<L: SmscLogic>(
     smsc: Arc<Mutex<Smsc>>,
 ) -> Result<bool, ProcessError> {
     struct DisconnectGuard {
+        smsc: Arc<Mutex<Smsc>>,
         connection: Arc<SmppConnection>,
     }
 
     impl Drop for DisconnectGuard {
         fn drop(&mut self) {
             futures::executor::block_on(async move {
-                self.connection.disconnect().await;
+                self.smsc
+                    .lock()
+                    .await
+                    .remove_connection(&self.connection)
+                    .await;
             });
         }
     }
@@ -286,6 +309,7 @@ async fn process<L: SmscLogic>(
     // even though we are wrapping it in an Arc so it can be accessed
     // from elsewhere.
     let disconnect_guard = DisconnectGuard {
+        smsc: Arc::clone(&smsc),
         connection: Arc::new(connection),
     };
 
@@ -388,42 +412,51 @@ async fn handle_bind_pdu<L: SmscLogic>(
 ) -> Result<Pdu, ProcessError> {
     let mut command_status = PduStatus::ESME_ROK;
 
-    let ret_body = match pdu.body() {
+    let (bind_data, ret_body) = match pdu.body() {
         PduBody::BindReceiver(body) => {
             let mut logic = smsc_logic.lock().await;
-            match logic.bind(body.bind_data()).await {
-                Ok(()) => Ok(BindReceiverRespPdu::new(&config.system_id)
-                    .unwrap()
-                    .into()),
-                Err(e) => {
-                    command_status = e.into();
-                    Ok(BindReceiverRespPdu::new_error().into())
-                }
-            }
+            Ok((
+                body.bind_data(),
+                match logic.bind(body.bind_data()).await {
+                    Ok(()) => BindReceiverRespPdu::new(&config.system_id)
+                        .unwrap()
+                        .into(),
+                    Err(e) => {
+                        command_status = e.into();
+                        BindReceiverRespPdu::new_error().into()
+                    }
+                },
+            ))
         }
         PduBody::BindTransceiver(body) => {
             let mut logic = smsc_logic.lock().await;
-            match logic.bind(body.bind_data()).await {
-                Ok(()) => Ok(BindTransceiverRespPdu::new(&config.system_id)
-                    .unwrap()
-                    .into()),
-                Err(e) => {
-                    command_status = e.into();
-                    Ok(BindTransceiverRespPdu::new_error().into())
-                }
-            }
+            Ok((
+                body.bind_data(),
+                match logic.bind(body.bind_data()).await {
+                    Ok(()) => BindTransceiverRespPdu::new(&config.system_id)
+                        .unwrap()
+                        .into(),
+                    Err(e) => {
+                        command_status = e.into();
+                        BindTransceiverRespPdu::new_error().into()
+                    }
+                },
+            ))
         }
         PduBody::BindTransmitter(body) => {
             let mut logic = smsc_logic.lock().await;
-            match logic.bind(body.bind_data()).await {
-                Ok(()) => Ok(BindTransmitterRespPdu::new(&config.system_id)
-                    .unwrap()
-                    .into()),
-                Err(e) => {
-                    command_status = e.into();
-                    Ok(BindTransmitterRespPdu::new_error().into())
-                }
-            }
+            Ok((
+                body.bind_data(),
+                match logic.bind(body.bind_data()).await {
+                    Ok(()) => BindTransmitterRespPdu::new(&config.system_id)
+                        .unwrap()
+                        .into(),
+                    Err(e) => {
+                        command_status = e.into();
+                        BindTransmitterRespPdu::new_error().into()
+                    }
+                },
+            ))
         }
         // This function should only be called with a Bind PDU
         _ => Err(ProcessError::new_internal_error(
@@ -434,6 +467,12 @@ async fn handle_bind_pdu<L: SmscLogic>(
     // If we successfully bound, register this connection so we
     // know to use it when we receive deliver_sm PDUs later
     if command_status == PduStatus::ESME_ROK {
+        connection
+            .bind(
+                bind_data.system_id.value.clone(),
+                bind_data.system_type.value.clone(),
+            )
+            .await;
         smsc.lock().await.add_connection(connection);
     }
 

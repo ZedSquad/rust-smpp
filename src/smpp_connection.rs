@@ -1,3 +1,4 @@
+use ascii::AsciiString;
 use bytes::{Buf, BytesMut};
 use log::*;
 use std::io;
@@ -9,10 +10,17 @@ use tokio::sync::Mutex;
 
 use crate::pdu::{CheckOutcome, Pdu, PduParseError, PduParseErrorBody};
 
+#[derive(Clone, Eq, Hash, PartialEq)]
+pub struct EsmeId {
+    system_id: AsciiString,
+    system_type: AsciiString,
+}
+
 pub struct SmppConnection {
     pub socket_addr: SocketAddr,
     read: Mutex<Option<SmppRead>>,
     write: Mutex<Option<SmppWrite>>,
+    bound_esme_id: std::sync::Mutex<Option<EsmeId>>,
 }
 
 impl SmppConnection {
@@ -33,7 +41,19 @@ impl SmppConnection {
             read: Mutex::new(Some(read)),
             write: Mutex::new(Some(write)),
             socket_addr,
+            bound_esme_id: std::sync::Mutex::new(None),
         }
+    }
+
+    pub fn bound_esme_id(&self) -> Option<EsmeId> {
+        self.bound_esme_id.lock().unwrap().clone()
+    }
+
+    pub async fn bind(&self, system_id: AsciiString, system_type: AsciiString) {
+        self.bound_esme_id.lock().unwrap().replace(EsmeId {
+            system_id,
+            system_type,
+        });
     }
 
     pub async fn read_pdu(&self) -> Result<Option<Pdu>, PduParseError> {
