@@ -10,6 +10,7 @@ use test_utils::{bytes_as_string, TestClient, TestServer, TestSetup};
 async fn when_we_receive_a_bad_pdu_we_respond_with_failure_resp_pdu() {
     TestSetup::new()
         .await
+        .client
         .send_and_expect_error_response(
             b"\x00\x00\x00\x29\x00\x00\x00\x02\x00\x00\x00\x00\x00\x00\x00\x14\
         e\xf0\x9f\x92\xa9d\0password\0type\0\x34\x00\x00\0",
@@ -43,6 +44,7 @@ async fn when_client_disconnects_within_pdu_we_continue_accepting_new_connection
 async fn when_sent_bad_pdu_header_we_respond_generic_nack() {
     TestSetup::new()
         .await
+        .client
         .send_and_expect_error_response(
             b"\x00\x00\x00\x01",
             // length is 1! ^^
@@ -57,6 +59,7 @@ async fn when_sent_bad_pdu_header_we_respond_generic_nack() {
 async fn when_we_receive_wrong_type_of_pdu_we_respond_generic_nack() {
     TestSetup::new()
         .await
+        .client
         .send_and_expect_error_response(
             b"\x00\x00\x00\x1b\x80\x00\x00\x02\x00\x00\x00\x00\x00\x00\x00\x02\
         TestServer\0",
@@ -84,6 +87,7 @@ async fn when_we_receive_nontlv_pdu_with_too_long_length_return_an_error() {
 
     TestSetup::new()
         .await
+        .client
         .send_and_expect_error_response(
             &many_bytes,
             b"\x00\x00\x00\x10\x80\x00\x00\x02\x00\x00\x00\x02\x00\x00\x00\x02",
@@ -156,6 +160,7 @@ async fn when_receive_pdu_with_short_length_but_long_string_we_respond_with_erro
 
     TestSetup::new()
         .await
+        .client
         .send_and_expect_error_response(
             &many_bytes,
             b"\x00\x00\x00\x10\x80\x00\x00\x02\x00\x00\x00\x08\x00\x00\x00\x02",
@@ -169,6 +174,7 @@ async fn when_receive_pdu_with_short_length_but_long_string_we_respond_with_erro
 async fn when_we_receive_invalid_pdu_type_we_respond_with_error() {
     TestSetup::new()
         .await
+        .client
         .send_and_expect_error_response(
             b"\x00\x00\x00\x10\xff\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x22",
             //    this is invalid! ^^^^^^^^^^^^^^^                    seq ^^^^

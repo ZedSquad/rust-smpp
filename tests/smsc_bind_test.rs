@@ -12,6 +12,7 @@ async fn when_we_receive_bind_transmitter_we_respond_with_resp() {
     // Given a server with a client connected to it
     TestSetup::new()
         .await
+        .client
         .send_and_expect_response(
             // When client sends bind_transmitter, sequence_number = 2
             b"\x00\x00\x00\x29\x00\x00\x00\x02\x00\x00\x00\x00\x00\x00\x00\x02\
@@ -27,6 +28,7 @@ async fn when_we_receive_bind_transmitter_we_respond_with_resp() {
 async fn when_we_receive_bind_receiver_we_respond_with_resp() {
     TestSetup::new()
         .await
+        .client
         .send_and_expect_response(
             // When client sends bind_receiver, sequence_number = 8
             b"\x00\x00\x00\x29\x00\x00\x00\x01\x00\x00\x00\x00\x00\x00\x00\x08\
@@ -42,6 +44,7 @@ async fn when_we_receive_bind_receiver_we_respond_with_resp() {
 async fn when_we_receive_bind_transceiver_we_respond_with_resp() {
     TestSetup::new()
         .await
+        .client
         .send_and_expect_response(
             // When client sends bind_transceiver, sequence_number = 6
             b"\x00\x00\x00\x29\x00\x00\x00\x09\x00\x00\x00\x00\x00\x00\x00\x06\
@@ -77,40 +80,44 @@ async fn when_we_bind_with_incorrect_password_we_receive_error() {
     let logic = PwIsAlwaysWrong {};
 
     let mut t = TestSetup::new_with_logic(logic).await;
-    t.send_and_expect_response(
-        // bind_transceiver
-        b"\x00\x00\x00\x29\x00\x00\x00\x09\x00\x00\x00\x00\x00\x00\x00\x06\
+    t.client
+        .send_and_expect_response(
+            // bind_transceiver
+            b"\x00\x00\x00\x29\x00\x00\x00\x09\x00\x00\x00\x00\x00\x00\x00\x06\
         esmeid\0password\0type\0\x34\x00\x00\0",
-        // command_status=ESME_RINVPASWD
-        b"\x00\x00\x00\x10\x80\x00\x00\x09\x00\x00\x00\x0e\x00\x00\x00\x06",
-    )
-    .await;
+            // command_status=ESME_RINVPASWD
+            b"\x00\x00\x00\x10\x80\x00\x00\x09\x00\x00\x00\x0e\x00\x00\x00\x06",
+        )
+        .await;
 
     t.new_client().await;
-    t.send_and_expect_response(
-        // bind_receiver
-        b"\x00\x00\x00\x29\x00\x00\x00\x01\x00\x00\x00\x00\x00\x00\x00\x06\
+    t.client
+        .send_and_expect_response(
+            // bind_receiver
+            b"\x00\x00\x00\x29\x00\x00\x00\x01\x00\x00\x00\x00\x00\x00\x00\x06\
         esmeid\0password\0type\0\x34\x00\x00\0",
-        // command_status=ESME_RINVPASWD
-        b"\x00\x00\x00\x10\x80\x00\x00\x01\x00\x00\x00\x0e\x00\x00\x00\x06",
-    )
-    .await;
+            // command_status=ESME_RINVPASWD
+            b"\x00\x00\x00\x10\x80\x00\x00\x01\x00\x00\x00\x0e\x00\x00\x00\x06",
+        )
+        .await;
 
     t.new_client().await;
-    t.send_and_expect_response(
-        // bind_transmitter
-        b"\x00\x00\x00\x29\x00\x00\x00\x02\x00\x00\x00\x00\x00\x00\x00\x06\
+    t.client
+        .send_and_expect_response(
+            // bind_transmitter
+            b"\x00\x00\x00\x29\x00\x00\x00\x02\x00\x00\x00\x00\x00\x00\x00\x06\
         esmeid\0password\0type\0\x34\x00\x00\0",
-        // command_status=ESME_RINVPASWD
-        b"\x00\x00\x00\x10\x80\x00\x00\x02\x00\x00\x00\x0e\x00\x00\x00\x06",
-    )
-    .await;
+            // command_status=ESME_RINVPASWD
+            b"\x00\x00\x00\x10\x80\x00\x00\x02\x00\x00\x00\x0e\x00\x00\x00\x06",
+        )
+        .await;
 }
 
 #[tokio::test]
 async fn when_we_receive_enquire_link_we_respond_with_resp() {
     TestSetup::new()
         .await
+        .client
         .send_and_expect_response(
             // When client sends enquire_link
             b"\x00\x00\x00\x10\x00\x00\x00\x15\x00\x00\x00\x00\x00\x00\x00\x12",
@@ -152,31 +159,34 @@ async fn when_we_receive_multiple_binds_we_can_keep_track() {
     };
 
     let mut t = TestSetup::new_with_logic(logic).await;
-    t.send_and_expect_response(
-        b"\x00\x00\x00\x29\x00\x00\x00\x09\x00\x00\x00\x00\x00\x00\x00\x06\
+    t.client
+        .send_and_expect_response(
+            b"\x00\x00\x00\x29\x00\x00\x00\x09\x00\x00\x00\x00\x00\x00\x00\x06\
         esmeid\0password\0type\0\x34\x00\x00\0",
-        b"\x00\x00\x00\x1b\x80\x00\x00\x09\x00\x00\x00\x00\x00\x00\x00\x06\
+            b"\x00\x00\x00\x1b\x80\x00\x00\x09\x00\x00\x00\x00\x00\x00\x00\x06\
         TestServer\0",
-    )
-    .await;
+        )
+        .await;
 
     t.new_client().await;
-    t.send_and_expect_response(
-        b"\x00\x00\x00\x29\x00\x00\x00\x01\x00\x00\x00\x00\x00\x00\x00\x06\
+    t.client
+        .send_and_expect_response(
+            b"\x00\x00\x00\x29\x00\x00\x00\x01\x00\x00\x00\x00\x00\x00\x00\x06\
         esmeid\0password\0type\0\x34\x00\x00\0",
-        b"\x00\x00\x00\x1b\x80\x00\x00\x01\x00\x00\x00\x00\x00\x00\x00\x06\
+            b"\x00\x00\x00\x1b\x80\x00\x00\x01\x00\x00\x00\x00\x00\x00\x00\x06\
         TestServer\0",
-    )
-    .await;
+        )
+        .await;
 
     t.new_client().await;
-    t.send_and_expect_response(
-        b"\x00\x00\x00\x29\x00\x00\x00\x02\x00\x00\x00\x00\x00\x00\x00\x06\
+    t.client
+        .send_and_expect_response(
+            b"\x00\x00\x00\x29\x00\x00\x00\x02\x00\x00\x00\x00\x00\x00\x00\x06\
         esmeid\0password\0type\0\x34\x00\x00\0",
-        b"\x00\x00\x00\x1b\x80\x00\x00\x02\x00\x00\x00\x00\x00\x00\x00\x06\
+            b"\x00\x00\x00\x1b\x80\x00\x00\x02\x00\x00\x00\x00\x00\x00\x00\x06\
         TestServer\0",
-    )
-    .await;
+        )
+        .await;
 
     assert_eq!(*num_binds.lock().unwrap(), 3);
 }

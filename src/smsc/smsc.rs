@@ -76,6 +76,7 @@ impl Smsc {
         // TODO: consider retrying after a delay if unable to match DR
         // TODO: handle MOs separately from DRs
         // TODO: maybe return a deliver_sm_resp on failure?
+        info!("<= receive_pdu() {:?}", pdu);
         match pdu.body() {
             PduBody::DeliverSm(body) => {
                 match body.extract_receipted_message_id() {
@@ -318,10 +319,7 @@ async fn process_loop<L: SmscLogic>(
                     )
                     .await
                     {
-                        Ok(response) => {
-                            info!("=> {:?}", response);
-                            connection.write_pdu(&response).await?
-                        }
+                        Ok(response) => connection.write_pdu(&response).await?,
                         Err(e) => {
                             // Couldn't handle this PDU type.  Send a nack...
                             connection
@@ -450,7 +448,7 @@ async fn handle_pdu<L: SmscLogic>(
     smsc_logic: Arc<Mutex<L>>,
     smsc: Arc<Mutex<Smsc>>,
 ) -> Result<Pdu, ProcessError> {
-    info!("<= {:?}", pdu);
+    info!("<= {} {:?}", connection.socket_addr, pdu);
     match pdu.body() {
         PduBody::BindReceiver(_body) => {
             handle_bind_pdu(pdu, connection, config, smsc_logic, smsc)

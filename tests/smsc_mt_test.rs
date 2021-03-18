@@ -63,6 +63,9 @@ async fn when_we_receive_submit_sm_we_respond_with_resp() {
 
     TestSetup::new_with_logic(Logic {})
         .await
+        .client
         .send_and_expect_response(&pdu, &resp)
         .await;
 }
+
+// TODO: can't send without binding first

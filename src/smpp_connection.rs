@@ -63,6 +63,7 @@ impl SmppConnection {
     }
 
     pub async fn write_pdu(&self, pdu: &Pdu) -> io::Result<()> {
+        info!("=> {} {:?}", self.socket_addr, pdu);
         if let Some(write) = &mut *self.write.lock().await {
             pdu.write(&mut write.stream).await
         } else {

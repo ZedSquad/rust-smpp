@@ -19,17 +19,18 @@ async fn when_we_receive_deliver_sm_for_a_message_we_provide_it_to_client() {
         msgid: String::from(msgid),
     };
 
-    let t = TestSetup::new_with_logic(logic).await;
-    let mut t = t.bind().await;
+    let mut t = TestSetup::new_with_logic(logic).await;
+    t.client.bind().await;
 
-    t.send_and_expect_response(&submit_sm, &submit_sm_resp)
+    t.client
+        .send_and_expect_response(&submit_sm, &submit_sm_resp)
         .await;
 
     let deliver_sm_pdu = new_deliver_sm_pdu(b"id:8765");
     let mut deliver_sm = Vec::new();
     deliver_sm_pdu.write(&mut deliver_sm).await.unwrap();
 
-    t.receive_pdu(deliver_sm_pdu).await.unwrap();
+    t.server.receive_pdu(deliver_sm_pdu).await.unwrap();
 
     let resp = t.client.read_n(deliver_sm.len()).await;
     assert_eq!(bytes_as_string(&resp), bytes_as_string(&deliver_sm));
@@ -132,5 +133,4 @@ async fn new_submit_sm_resp(sequence_number: u32, msgid: &str) -> Vec<u8> {
     ret
 }
 
-// TODO: Client sends deliver_sm_resp and it comes through to SmscLogic
-// TODO: multiple clients, and DRs go back to the right one
+// TODO: Retry or fail deliver_sm or submit_sm when we don't receive a resp
