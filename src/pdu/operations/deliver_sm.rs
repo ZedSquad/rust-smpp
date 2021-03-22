@@ -79,6 +79,10 @@ impl DeliverSmPdu {
             None
         }
     }
+
+    pub fn source_addr(&self) -> String {
+        self.0.source_addr.value.to_string()
+    }
 }
 
 #[cfg(test)]

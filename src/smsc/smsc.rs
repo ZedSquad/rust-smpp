@@ -11,10 +11,11 @@ use tokio::sync::{Mutex, Semaphore, TryAcquireError};
 use tokio::time::sleep;
 
 use crate::async_result::AsyncResult;
+use crate::message_unique_key::MessageUniqueKey;
 use crate::pdu::{
     BindReceiverRespPdu, BindTransceiverRespPdu, BindTransmitterRespPdu,
     EnquireLinkRespPdu, GenericNackPdu, Pdu, PduBody, PduParseError, PduStatus,
-    SubmitSmRespPdu,
+    SubmitSmPdu, SubmitSmRespPdu,
 };
 use crate::smpp_connection::{EsmeId, SmppConnection};
 use crate::smsc::{SmscConfig, SmscLogic};
@@ -38,6 +39,7 @@ pub fn run<L: SmscLogic + Send + Sync + 'static>(
 
 pub struct Smsc {
     connections: HashMap<EsmeId, Arc<SmppConnection>>,
+    messages: HashMap<MessageUniqueKey, EsmeId>,
 }
 
 impl Smsc {
@@ -53,6 +55,7 @@ impl Smsc {
 
         let smsc = Smsc {
             connections: HashMap::new(),
+            messages: HashMap::new(),
         };
         let smsc = Arc::new(Mutex::new(smsc));
 
@@ -131,8 +134,17 @@ impl Smsc {
         connection: &Arc<SmppConnection>,
     ) {
         connection.disconnect().await;
-        self.connections
-            .remove(&connection.bound_esme_id().unwrap());
+        if let Some(esme_id) = connection.bound_esme_id() {
+            self.connections.remove(&esme_id);
+        }
+    }
+
+    fn add_message(
+        &mut self,
+        message_unique_key: MessageUniqueKey,
+        esme_id: EsmeId,
+    ) {
+        self.messages.insert(message_unique_key, esme_id);
     }
 
     async fn connection_for_message_id(
@@ -230,6 +242,7 @@ struct UnexpectedPduType {
 enum ProcessError {
     PduParseError(PduParseError),
     UnexpectedPduType(UnexpectedPduType),
+    ConnectionNotBoundAsTransmitter,
     IoError(io::Error),
     InternalError(String),
 }
@@ -244,6 +257,10 @@ impl ProcessError {
 
     fn new_internal_error(message: &str) -> Self {
         ProcessError::InternalError(String::from(message))
+    }
+
+    fn new_connection_not_bound_as_transmitter() -> Self {
+        ProcessError::ConnectionNotBoundAsTransmitter
     }
 }
 
@@ -273,6 +290,10 @@ impl Display for ProcessError {
                     e.command_id, e.sequence_number
                 )
             }
+            ProcessError::ConnectionNotBoundAsTransmitter => String::from(
+                "Attempted to transmit over a connection that was not bound \
+                as a transmitter!",
+            ),
             ProcessError::IoError(e) => e.to_string(),
             ProcessError::InternalError(s) => String::from(s),
         };
@@ -473,11 +494,43 @@ async fn handle_bind_pdu<L: SmscLogic>(
                 bind_data.system_type.value.clone(),
             )
             .await;
+        // TODO: we only need to know about this connection if it can transmit,
+        // right?
         smsc.lock().await.add_connection(connection);
     }
 
     Pdu::new(command_status as u32, pdu.sequence_number.value, ret_body)
         .map_err(|e| e.into())
+}
+
+async fn handle_submit_sm_pdu<L: SmscLogic>(
+    body: &SubmitSmPdu,
+    sequence_number: u32,
+    connection: Arc<SmppConnection>,
+    smsc_logic: Arc<Mutex<L>>,
+    smsc: Arc<Mutex<Smsc>>,
+) -> Result<Pdu, ProcessError> {
+    // TODO: only do this if bound as a receiver or transceiver -
+    // find out using connection.bound_esme_id
+
+    if let Some(esme_id) = connection.bound_esme_id() {
+        let mut command_status = PduStatus::ESME_ROK;
+        let resp = match smsc_logic.lock().await.submit_sm(body).await {
+            Ok((resp, message_unique_key)) => {
+                smsc.lock().await.add_message(message_unique_key, esme_id);
+                resp
+            }
+            Err(e) => {
+                command_status = e.into();
+                SubmitSmRespPdu::new_error().into()
+            }
+        };
+        Pdu::new(command_status as u32, sequence_number, resp.into())
+            .map_err(|e| e.into())
+    } else {
+        // TODO: check this is not a receiver
+        Err(ProcessError::new_connection_not_bound_as_transmitter())
+    }
 }
 
 async fn handle_pdu<L: SmscLogic>(
@@ -488,6 +541,7 @@ async fn handle_pdu<L: SmscLogic>(
     smsc: Arc<Mutex<Smsc>>,
 ) -> Result<Pdu, ProcessError> {
     info!("<= {} {:?}", connection.socket_addr, pdu);
+    let sequence_number = pdu.sequence_number.value;
     match pdu.body() {
         PduBody::BindReceiver(_body) => {
             handle_bind_pdu(pdu, connection, config, smsc_logic, smsc)
@@ -513,22 +567,15 @@ async fn handle_pdu<L: SmscLogic>(
         .map_err(|e| e.into()),
 
         PduBody::SubmitSm(body) => {
-            let mut command_status = PduStatus::ESME_ROK;
-            let resp = match smsc_logic.lock().await.submit_sm(body).await {
-                Ok(resp) => resp,
-                Err(e) => {
-                    command_status = e.into();
-                    SubmitSmRespPdu::new_error().into()
-                }
-            };
-            Pdu::new(
-                command_status as u32,
-                pdu.sequence_number.value,
-                resp.into(),
+            handle_submit_sm_pdu(
+                body,
+                sequence_number,
+                connection,
+                smsc_logic,
+                smsc,
             )
-            .map_err(|e| e.into())
+            .await
         }
-
         _ => Err(ProcessError::new_unexpected_pdu_type(
             pdu.command_id().value,
             pdu.sequence_number.value,

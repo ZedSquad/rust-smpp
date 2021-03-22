@@ -2,6 +2,7 @@ use async_trait::async_trait;
 use env_logger::Env;
 use log::*;
 
+use smpp::message_unique_key::MessageUniqueKey;
 use smpp::pdu::{SubmitSmPdu, SubmitSmRespPdu};
 use smpp::smsc;
 use smpp::smsc::SmscConfig;
@@ -32,7 +33,8 @@ fn main() {
         async fn submit_sm(
             &mut self,
             _pdu: &SubmitSmPdu,
-        ) -> Result<SubmitSmRespPdu, SubmitSmError> {
+        ) -> Result<(SubmitSmRespPdu, MessageUniqueKey), SubmitSmError>
+        {
             Err(SubmitSmError::InternalError)
         }
     }

@@ -1,5 +1,6 @@
 use async_trait::async_trait;
 
+use smpp::message_unique_key::MessageUniqueKey;
 use smpp::pdu::{SubmitSmPdu, SubmitSmRespPdu};
 use smpp::smsc::{BindData, BindError, SmscLogic, SubmitSmError};
 
@@ -72,7 +73,8 @@ async fn when_we_bind_with_incorrect_password_we_receive_error() {
         async fn submit_sm(
             &mut self,
             _pdu: &SubmitSmPdu,
-        ) -> Result<SubmitSmRespPdu, SubmitSmError> {
+        ) -> Result<(SubmitSmRespPdu, MessageUniqueKey), SubmitSmError>
+        {
             panic!("submit_sm not implemented");
         }
     }
@@ -148,7 +150,8 @@ async fn when_we_receive_multiple_binds_we_can_keep_track() {
         async fn submit_sm(
             &mut self,
             _pdu: &SubmitSmPdu,
-        ) -> Result<SubmitSmRespPdu, SubmitSmError> {
+        ) -> Result<(SubmitSmRespPdu, MessageUniqueKey), SubmitSmError>
+        {
             panic!("submit_sm not implemented");
         }
     }

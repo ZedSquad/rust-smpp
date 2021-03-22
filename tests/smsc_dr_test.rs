@@ -1,5 +1,6 @@
 use async_trait::async_trait;
 
+use smpp::message_unique_key::MessageUniqueKey;
 use smpp::pdu::{
     DeliverEsmClass, DeliverSmPdu, Pdu, SubmitEsmClass, SubmitSmPdu,
     SubmitSmRespPdu,
@@ -20,7 +21,7 @@ async fn when_we_receive_deliver_sm_for_a_message_we_provide_it_to_client() {
     };
 
     let mut t = TestSetup::new_with_logic(logic).await;
-    t.client.bind().await;
+    t.client.bind_transceiver().await;
 
     t.client
         .send_and_expect_response(&submit_sm, &submit_sm_resp)
@@ -49,8 +50,11 @@ impl SmscLogic for Logic {
     async fn submit_sm(
         &mut self,
         _pdu: &SubmitSmPdu,
-    ) -> Result<SubmitSmRespPdu, SubmitSmError> {
-        Ok(SubmitSmRespPdu::new(&self.msgid).unwrap())
+    ) -> Result<(SubmitSmRespPdu, MessageUniqueKey), SubmitSmError> {
+        Ok((
+            SubmitSmRespPdu::new(&self.msgid).unwrap(),
+            MessageUniqueKey::new("testsystem", &self.msgid, ""),
+        ))
     }
 }
 

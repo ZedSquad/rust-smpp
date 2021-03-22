@@ -16,7 +16,7 @@ pub struct SmData {
     service_type: COctetString,
     source_addr_ton: Integer1,
     source_addr_npi: Integer1,
-    source_addr: COctetString,
+    pub source_addr: COctetString,
     dest_addr_ton: Integer1,
     dest_addr_npi: Integer1,
     destination_addr: COctetString,

@@ -1,5 +1,6 @@
 use async_trait::async_trait;
 
+use smpp::message_unique_key::MessageUniqueKey;
 use smpp::pdu::{
     DeliverEsmClass, DeliverSmPdu, Pdu, SubmitEsmClass, SubmitSmPdu,
     SubmitSmRespPdu,
@@ -21,9 +22,9 @@ async fn when_multiple_clients_send_mts_we_deliver_drs_to_the_right_one() {
     let mut client2 = TestClient::connect_to(&server).await.unwrap();
     let mut client3 = TestClient::connect_to(&server).await.unwrap();
 
-    client1.bind().await;
-    client2.bind().await;
-    client3.bind().await;
+    client1.bind_transceiver().await;
+    client2.bind_transceiver().await;
+    client3.bind_transceiver().await;
 
     // Each client sends an MT
     client1
@@ -72,12 +73,19 @@ impl SmscLogic for Logic {
     async fn submit_sm(
         &mut self,
         _pdu: &SubmitSmPdu,
-    ) -> Result<SubmitSmRespPdu, SubmitSmError> {
+    ) -> Result<(SubmitSmRespPdu, MessageUniqueKey), SubmitSmError> {
         let msgid = self
             .msgids
             .pop()
             .expect("Received more MTs than IDs I was given!");
-        Ok(SubmitSmRespPdu::new(&msgid.to_string()).unwrap())
+        Ok((
+            SubmitSmRespPdu::new(&msgid.to_string()).unwrap(),
+            MessageUniqueKey::new(
+                "multiclienttestsystem",
+                &msgid.to_string(),
+                "",
+            ),
+        ))
     }
 }
 
@@ -163,3 +171,4 @@ async fn write(pdu: Pdu) -> Vec<u8> {
 // TODO: deliver to the same client after they disconnect and reconnect
 // TODO: drop DRs after some time trying to deliver
 // TODO: multiple DRs to the same client
+// TODO: send DR over a receiver connection when we bound as transmitter

@@ -1,5 +1,6 @@
 use async_trait::async_trait;
 
+use smpp::message_unique_key::MessageUniqueKey;
 use smpp::pdu::{SubmitSmPdu, SubmitSmRespPdu};
 use smpp::smsc::{BindData, BindError, SmscLogic, SubmitSmError};
 
@@ -56,14 +57,21 @@ async fn when_we_receive_submit_sm_we_respond_with_resp() {
         async fn submit_sm(
             &mut self,
             _pdu: &SubmitSmPdu,
-        ) -> Result<SubmitSmRespPdu, SubmitSmError> {
-            Ok(SubmitSmRespPdu::new("mymessage").unwrap())
+        ) -> Result<(SubmitSmRespPdu, MessageUniqueKey), SubmitSmError>
+        {
+            let msgid = "mymessage";
+            Ok((
+                SubmitSmRespPdu::new(msgid).unwrap(),
+                MessageUniqueKey::new("mttest", msgid, "dest"),
+            ))
         }
     }
 
     TestSetup::new_with_logic(Logic {})
         .await
         .client
+        .into_bound_transmitter()
+        .await
         .send_and_expect_response(&pdu, &resp)
         .await;
 }

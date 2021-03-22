@@ -9,6 +9,7 @@ use tokio::sync::Mutex;
 use tokio::time::{sleep, Duration};
 
 use smpp::async_result::AsyncResult;
+use smpp::message_unique_key::MessageUniqueKey;
 use smpp::pdu::{Pdu, SubmitSmPdu, SubmitSmRespPdu};
 use smpp::smsc::{
     BindData, BindError, Smsc, SmscConfig, SmscLogic, SubmitSmError,
@@ -29,7 +30,7 @@ impl SmscLogic for DefaultLogic {
     async fn submit_sm(
         &mut self,
         _pdu: &SubmitSmPdu,
-    ) -> Result<SubmitSmRespPdu, SubmitSmError> {
+    ) -> Result<(SubmitSmRespPdu, MessageUniqueKey), SubmitSmError> {
         Err(SubmitSmError::InternalError)
     }
 }
@@ -145,7 +146,27 @@ impl TestClient {
         }
     }
 
-    pub async fn bind(&mut self) {
+    pub async fn bind_receiver(&mut self) {
+        self.send_and_expect_response(
+            b"\x00\x00\x00\x29\x00\x00\x00\x01\x00\x00\x00\x00\x00\x00\x00\x07\
+        esmeid\0password\0type\0\x34\x00\x00\0",
+            b"\x00\x00\x00\x1b\x80\x00\x00\x01\x00\x00\x00\x00\x00\x00\x00\x07\
+        TestServer\0",
+        )
+        .await;
+    }
+
+    pub async fn bind_transmitter(&mut self) {
+        self.send_and_expect_response(
+            b"\x00\x00\x00\x29\x00\x00\x00\x02\x00\x00\x00\x00\x00\x00\x00\x07\
+        esmeid\0password\0type\0\x34\x00\x00\0",
+            b"\x00\x00\x00\x1b\x80\x00\x00\x02\x00\x00\x00\x00\x00\x00\x00\x07\
+        TestServer\0",
+        )
+        .await;
+    }
+
+    pub async fn bind_transceiver(&mut self) {
         self.send_and_expect_response(
             b"\x00\x00\x00\x29\x00\x00\x00\x09\x00\x00\x00\x00\x00\x00\x00\x07\
         esmeid\0password\0type\0\x34\x00\x00\0",
@@ -153,6 +174,11 @@ impl TestClient {
         TestServer\0",
         )
         .await;
+    }
+
+    pub async fn into_bound_transmitter(mut self) -> Self {
+        self.bind_transmitter().await;
+        self
     }
 
     async fn send_exp(&mut self, input: &[u8], expected_output: &[u8]) {

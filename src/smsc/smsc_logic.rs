@@ -1,7 +1,9 @@
 use async_trait::async_trait;
 
+use crate::message_unique_key::MessageUniqueKey;
+use crate::pdu::data::bind_data::BindData;
 use crate::pdu::PduStatus;
-use crate::pdu::{data::bind_data::BindData, SubmitSmPdu, SubmitSmRespPdu};
+use crate::pdu::{SubmitSmPdu, SubmitSmRespPdu};
 
 pub enum BindError {
     IncorrectPassword,
@@ -35,5 +37,5 @@ pub trait SmscLogic {
     async fn submit_sm(
         &mut self,
         pdu: &SubmitSmPdu,
-    ) -> Result<SubmitSmRespPdu, SubmitSmError>;
+    ) -> Result<(SubmitSmRespPdu, MessageUniqueKey), SubmitSmError>;
 }
