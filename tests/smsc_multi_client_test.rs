@@ -22,10 +22,9 @@ async fn when_multiple_clients_send_mts_we_deliver_drs_to_the_right_one() {
     let mut client2 = TestClient::connect_to(&server).await.unwrap();
     let mut client3 = TestClient::connect_to(&server).await.unwrap();
 
-    // THESE MUST USE DIFFERENT SYSTEM IDs
-    client1.bind_transceiver().await;
-    client2.bind_transceiver().await;
-    client3.bind_transceiver().await;
+    client1.bind_transceiver_as("client1").await;
+    client2.bind_transceiver_as("client2").await;
+    client3.bind_transceiver_as("client3").await;
 
     // Each client sends an MT
     client1
@@ -55,11 +54,10 @@ async fn when_multiple_clients_send_mts_we_deliver_drs_to_the_right_one() {
         .receive_pdu("multiclienttestsystem", dr(2))
         .await
         .unwrap();
-    /* TODO: freezes
+
     // Reading in clients out-of-order is fine
     client2.expect_to_receive(&write(dr(2)).await).await;
     client1.expect_to_receive(&write(dr(1)).await).await;
-    */
 }
 
 struct Logic {

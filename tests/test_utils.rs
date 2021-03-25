@@ -180,6 +180,27 @@ impl TestClient {
         .await;
     }
 
+    pub async fn bind_transceiver_as(&mut self, system_id: &str) {
+        let mut bind_pdu = Vec::<u8>::new();
+        bind_pdu.extend(b"\x00\x00\x00\x09\x00\x00\x00\x00\x00\x00\x00\x07");
+        bind_pdu.extend(system_id.as_bytes());
+        bind_pdu.extend(b"\0password\0type\0\x34\x00\x00\0");
+
+        let len: u32 = (bind_pdu.len() + 4) as u32;
+        let len_bytes: [u8; 4] = len.to_be_bytes();
+        bind_pdu.insert(0, len_bytes[3]);
+        bind_pdu.insert(0, len_bytes[2]);
+        bind_pdu.insert(0, len_bytes[1]);
+        bind_pdu.insert(0, len_bytes[0]);
+
+        self.send_and_expect_response(
+            &bind_pdu,
+            b"\x00\x00\x00\x1b\x80\x00\x00\x09\x00\x00\x00\x00\x00\x00\x00\x07\
+        TestServer\0",
+        )
+        .await;
+    }
+
     pub async fn into_bound_transmitter(mut self) -> Self {
         self.bind_transmitter().await;
         self
