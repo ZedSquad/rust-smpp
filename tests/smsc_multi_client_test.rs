@@ -14,7 +14,7 @@ use test_utils::{TestClient, TestServer};
 #[tokio::test]
 async fn when_multiple_clients_send_mts_we_deliver_drs_to_the_right_one() {
     // 3 clients connect to a server
-    let logic = Logic::new(vec![1, 2, 3]);
+    let logic = Logic::new(vec![1, 2, 3, 4]);
     let server = TestServer::start_with_logic_and_config(logic, 3)
         .await
         .unwrap();
@@ -36,6 +36,9 @@ async fn when_multiple_clients_send_mts_we_deliver_drs_to_the_right_one() {
     client3
         .send_and_expect_response(&mt(3).await, &mt_resp(3).await)
         .await;
+    client2
+        .send_and_expect_response(&mt(4).await, &mt_resp(4).await)
+        .await;
 
     // The DR for client3 comes back first
     server
@@ -54,10 +57,15 @@ async fn when_multiple_clients_send_mts_we_deliver_drs_to_the_right_one() {
         .receive_pdu("multiclienttestsystem", dr(2))
         .await
         .unwrap();
+    server
+        .receive_pdu("multiclienttestsystem", dr(4))
+        .await
+        .unwrap();
 
     // Reading in clients out-of-order is fine
     client2.expect_to_receive(&write(dr(2)).await).await;
     client1.expect_to_receive(&write(dr(1)).await).await;
+    client2.expect_to_receive(&write(dr(4)).await).await;
 }
 
 struct Logic {
@@ -177,6 +185,5 @@ async fn write(pdu: Pdu) -> Vec<u8> {
 }
 
 // TODO: deliver to the same client after they disconnect and reconnect
-// TODO: multiple DRs to the same client
 // Later: Issue#15: send DR over a receiver connection when bound as transmitter
 // Later: Issue#5: drop DRs after some time trying to deliver
