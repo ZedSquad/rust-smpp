@@ -23,7 +23,7 @@ pub enum SubmitMessageType {
     EsmeManualUserAcknowledgement = 0b00010000,
 }
 
-// TODO: GSM Network Specific Features (bits 7-6)
+// Later: Issue#16: GSM Network Specific Features (bits 7-6)
 
 #[repr(u8)]
 pub enum DeliverEsmClass {
@@ -52,4 +52,4 @@ pub enum DeliverMessageType {
     IntermediateDeliveryNotification = 0b00100000,
 }
 
-// TODO: GSM Network Specific Features (bits 7-6)
+// Later: Issue#16: GSM Network Specific Features (bits 7-6)

@@ -5,7 +5,7 @@ use std::io;
 use std::io::{BufRead, Read};
 use tokio::io::{AsyncWrite, AsyncWriteExt};
 
-// TODO: PDU Types, from spec section 3.1
+// Later: Issue#11: PDU Types, from spec section 3.1
 // COctetStringDecimal
 // COctetStringHex
 

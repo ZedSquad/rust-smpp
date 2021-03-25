@@ -27,7 +27,7 @@ impl SubmitSmPdu {
         sm_default_msg_id: u8,
         short_message: &[u8],
     ) -> Result<Self, PduParseError> {
-        // TODO: validate esm_class for the type of message this is?
+        // Later: Issue#6: validate esm_class for the type of message this is?
         Ok(Self(SmData::new(
             service_type,
             source_addr_ton,
@@ -57,7 +57,7 @@ impl SubmitSmPdu {
         bytes: &mut dyn io::BufRead,
         command_status: u32,
     ) -> Result<SubmitSmPdu, PduParseError> {
-        // TODO: validate esm_class for the type of message this is?
+        // Later: Issue#6: validate esm_class for the type of message this is?
         Ok(Self(SmData::parse(bytes, command_status)?))
     }
 

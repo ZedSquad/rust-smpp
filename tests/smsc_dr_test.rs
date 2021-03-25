@@ -87,8 +87,8 @@ fn new_deliver_sm_pdu(short_message: &[u8]) -> Pdu {
             3,
             0,
             short_message,
-            // TODO: check for correct esm class in parsing/smsc code?
-            // TODO: more complete short_message and/or TLV receipted_message_id
+            // Later: Issue#6: enforce meaning of e.g. esm_class
+            // Later: Issue#7: parse DR body fully
         )
         .unwrap()
         .into(),
@@ -144,4 +144,4 @@ async fn new_submit_sm_resp(sequence_number: u32, msgid: &str) -> Vec<u8> {
     ret
 }
 
-// TODO: Retry or fail deliver_sm or submit_sm when we don't receive a resp
+// Later: Issue#5: Retry or fail deliver_sm or submit_sm when don't receive resp

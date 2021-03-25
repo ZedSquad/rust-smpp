@@ -177,6 +177,6 @@ async fn write(pdu: Pdu) -> Vec<u8> {
 }
 
 // TODO: deliver to the same client after they disconnect and reconnect
-// TODO: drop DRs after some time trying to deliver
 // TODO: multiple DRs to the same client
-// TODO: send DR over a receiver connection when we bound as transmitter
+// Later: Issue#15: send DR over a receiver connection when bound as transmitter
+// Later: Issue#5: drop DRs after some time trying to deliver

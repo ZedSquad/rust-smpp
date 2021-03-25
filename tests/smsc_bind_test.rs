@@ -194,11 +194,9 @@ async fn when_we_receive_multiple_binds_we_can_keep_track() {
     assert_eq!(*num_binds.lock().unwrap(), 3);
 }
 
-// TODO: return DR
-// TODO: return MO
-// Later: client app + system test that allows us to compare with CloudHopper
-// Later: smpp session states (spec 2.2)
-// Later: sc_interface_version TLV in bind response
-// Later: Check interface versions in binds and responses, and submit_sm
-// Later: all PDU types and formats
-// Later: cargo features e.g. smsc, esme, pdu
+// Later: Issue#12: return MO
+// Later: Issue#9: client app + system test that allows to compare w CloudHopper
+// Later: Issue#8: smpp session states (spec 2.2)
+// Later: Issue#2: sc_interface_version TLV in bind response
+// Later: Issue#10: Check interface versions in binds and responses, submit_sm
+// Later: Issue#11: all PDU types and formats

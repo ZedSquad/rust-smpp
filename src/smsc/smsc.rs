@@ -83,9 +83,8 @@ impl Smsc {
         namespace_id: &str,
         pdu: Pdu,
     ) -> AsyncResult<()> {
-        // TODO: consider retrying after a delay if unable to match DR
-        // TODO: handle MOs separately from DRs
-        // TODO: maybe return a deliver_sm_resp on failure?
+        // Later: Issue#5: consider retrying after a delay if unable to match DR
+        // Later: Issue#12: handle MOs separately from DRs
         info!("<= receive_pdu() {:?}", pdu);
         match pdu.body() {
             PduBody::DeliverSm(body) => {
@@ -114,9 +113,9 @@ impl Smsc {
         message_unique_key: MessageUniqueKey,
     ) -> AsyncResult<()> {
         let conn = self.connection_for_message(message_unique_key).await?;
-        // TODO: in order to support a window size to the client, we
-        //       will need to put this PDU into a queue rather than writing
-        //       it immediately here.
+        // Later: Issue#3: in order to support a window size to the client, we
+        // will need to put this PDU into a queue rather than writing
+        // it immediately here.
         tokio::spawn(async move {
             conn.write_pdu(&pdu).await.map_err(
                 |e| error!("Failed to send PDU to client: {}", e), // TODO: give information about the client here
@@ -151,7 +150,7 @@ impl Smsc {
         message_unique_key: MessageUniqueKey,
         esme_id: EsmeId,
     ) {
-        // TODO: delete old entries in this map to keep the size bounded
+        // Later: Issue#14: delete old entries in this map to keep size bounded
         self.messages.insert(message_unique_key, esme_id);
     }
 
@@ -530,7 +529,7 @@ async fn handle_submit_sm_pdu<L: SmscLogic>(
     smsc_logic: Arc<Mutex<L>>,
     smsc: Arc<Mutex<Smsc>>,
 ) -> Result<Pdu, ProcessError> {
-    // TODO: only do this if bound as a receiver or transceiver -
+    // Later: Issue#15: only do this if bound as a receiver or transceiver -
     // find out using connection.bound_esme_id
 
     if let Some(esme_id) = connection.bound_esme_id() {
@@ -548,7 +547,7 @@ async fn handle_submit_sm_pdu<L: SmscLogic>(
         Pdu::new(command_status as u32, sequence_number, resp.into())
             .map_err(|e| e.into())
     } else {
-        // TODO: check this is not a receiver
+        // Later: Issue#15: check this is not a receiver
         Err(ProcessError::new_connection_not_bound_as_transmitter())
     }
 }

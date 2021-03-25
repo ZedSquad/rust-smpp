@@ -28,7 +28,7 @@ impl DeliverSmPdu {
         sm_default_msg_id: u8,
         short_message: &[u8],
     ) -> Result<Self, PduParseError> {
-        // TODO: validate esm_class for the type of message this is?
+        // Later: Issue#6: validate esm_class for the type of message this is?
         Ok(Self(SmData::new(
             service_type,
             source_addr_ton,
@@ -58,7 +58,7 @@ impl DeliverSmPdu {
         bytes: &mut dyn io::BufRead,
         command_status: u32,
     ) -> Result<DeliverSmPdu, PduParseError> {
-        // TODO: validate esm_class for the type of message this is?
+        // Later: Issue#6: validate esm_class for the type of message this is?
         Ok(Self(SmData::parse(bytes, command_status)?))
     }
 
@@ -71,7 +71,7 @@ impl DeliverSmPdu {
 
     pub fn extract_receipted_message_id(&self) -> Option<String> {
         if self.0.short_message.value.starts_with(b"id:") {
-            // TODO: assumes the whole short message is just id
+            // Later: Issue#7: assumes the whole short message is just id
             from_utf8(&self.0.short_message.value[3..])
                 .ok()
                 .map(String::from)
@@ -118,10 +118,10 @@ mod tests {
     }
 }
 
-// TODO: Extract message id from receipted_message_id TLV
-// TODO: parse short_message more fully - e.g. id not at start
-// TODO: Explicitly allow/disallow short_message ids longer than 10?
-// TODO: Explicitly allow/disallow short_message ids that are not decimal?
-// TODO: https://smpp.org/SMPP_v3_4_Issue1_2.pdf Appendix B says ID is
-//       NULL-terminated ("C-Octet String (Decimal)"), but that
+// Later: Issue#2: Extract message id from receipted_message_id TLV
+// Later: Issue#7: parse short_message more fully - e.g. id not at start
+// Later: Issue#17: Explicitly allow/disallow short_message ids longer than 10?
+// Later: Issue#17: Explicitly allow/disallow short_message ids not decimal?
+// Later: Issue#17: https://smpp.org/SMPP_v3_4_Issue1_2.pdf Appendix B says ID
+//       is NULL-terminated ("C-Octet String (Decimal)"), but that
 //       seems unlikely - check real-world usage.
