@@ -68,6 +68,46 @@ async fn when_multiple_clients_send_mts_we_deliver_drs_to_the_right_one() {
     client2.expect_to_receive(&write(dr(4)).await).await;
 }
 
+#[tokio::test]
+async fn when_client_disconnects_and_reconnects_they_can_receive_drs() {
+    let logic = Logic::new(vec![1, 2]);
+    let server = TestServer::start_with_logic(logic).await.unwrap();
+    let mut client2 = TestClient::connect_to(&server).await.unwrap();
+    {
+        let mut client1 = TestClient::connect_to(&server).await.unwrap();
+
+        client1.bind_transceiver_as("client1").await;
+        client2.bind_transceiver_as("client2").await;
+
+        // Each client sends an MT
+        client1
+            .send_and_expect_response(&mt(1).await, &mt_resp(1).await)
+            .await;
+        client2
+            .send_and_expect_response(&mt(2).await, &mt_resp(2).await)
+            .await;
+
+        // Client 1 disconnects because we let it go out of scope here
+    }
+    // The same person binds again
+    let mut client3 = TestClient::connect_to(&server).await.unwrap();
+    client3.bind_transceiver_as("client1").await;
+
+    // The DRs come back
+    server
+        .receive_pdu("multiclienttestsystem", dr(1))
+        .await
+        .unwrap();
+    server
+        .receive_pdu("multiclienttestsystem", dr(2))
+        .await
+        .unwrap();
+
+    // And the clients receive them
+    client3.expect_to_receive(&write(dr(1)).await).await;
+    client2.expect_to_receive(&write(dr(2)).await).await;
+}
+
 struct Logic {
     msgids: Vec<u32>,
 }
@@ -184,6 +224,5 @@ async fn write(pdu: Pdu) -> Vec<u8> {
     ret
 }
 
-// TODO: deliver to the same client after they disconnect and reconnect
 // Later: Issue#15: send DR over a receiver connection when bound as transmitter
 // Later: Issue#5: drop DRs after some time trying to deliver
