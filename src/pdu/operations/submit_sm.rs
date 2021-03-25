@@ -67,4 +67,8 @@ impl SubmitSmPdu {
     ) -> Result<Self, PduParseError> {
         Ok(Self(self.0.validate_command_status(command_status)?))
     }
+
+    pub fn destination_addr(&self) -> String {
+        self.0.destination_addr.value.to_string()
+    }
 }

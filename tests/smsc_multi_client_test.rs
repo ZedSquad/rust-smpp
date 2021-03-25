@@ -22,6 +22,7 @@ async fn when_multiple_clients_send_mts_we_deliver_drs_to_the_right_one() {
     let mut client2 = TestClient::connect_to(&server).await.unwrap();
     let mut client3 = TestClient::connect_to(&server).await.unwrap();
 
+    // THESE MUST USE DIFFERENT SYSTEM IDs
     client1.bind_transceiver().await;
     client2.bind_transceiver().await;
     client3.bind_transceiver().await;
@@ -38,14 +39,23 @@ async fn when_multiple_clients_send_mts_we_deliver_drs_to_the_right_one() {
         .await;
 
     // The DR for client3 comes back first
-    server.receive_pdu(dr(3)).await.unwrap();
+    server
+        .receive_pdu("multiclienttestsystem", dr(3))
+        .await
+        .unwrap();
     // and it received it
     client3.expect_to_receive(&write(dr(3)).await).await;
 
-    /* TODO: freezes
     // Then the others, and each goes to the client that sent the relevant MT
-    server.receive_pdu(dr(1)).await.unwrap();
-    server.receive_pdu(dr(2)).await.unwrap();
+    server
+        .receive_pdu("multiclienttestsystem", dr(1))
+        .await
+        .unwrap();
+    server
+        .receive_pdu("multiclienttestsystem", dr(2))
+        .await
+        .unwrap();
+    /* TODO: freezes
     // Reading in clients out-of-order is fine
     client2.expect_to_receive(&write(dr(2)).await).await;
     client1.expect_to_receive(&write(dr(1)).await).await;
@@ -72,7 +82,7 @@ impl SmscLogic for Logic {
 
     async fn submit_sm(
         &mut self,
-        _pdu: &SubmitSmPdu,
+        pdu: &SubmitSmPdu,
     ) -> Result<(SubmitSmRespPdu, MessageUniqueKey), SubmitSmError> {
         let msgid = self
             .msgids
@@ -81,9 +91,9 @@ impl SmscLogic for Logic {
         Ok((
             SubmitSmRespPdu::new(&msgid.to_string()).unwrap(),
             MessageUniqueKey::new(
-                "multiclienttestsystem",
-                &msgid.to_string(),
-                "",
+                String::from("multiclienttestsystem"),
+                msgid.to_string(),
+                pdu.destination_addr(),
             ),
         ))
     }
@@ -97,10 +107,10 @@ fn dr(sequence_number: u32) -> Pdu {
             "",
             0,
             0,
-            "src_addr",
+            "4477711111",
             0,
             0,
-            "dest_addr",
+            "MyComp",
             DeliverEsmClass::SmscDeliveryReceipt as u8,
             0x34,
             1,
@@ -126,10 +136,10 @@ async fn mt(sequence_number: u32) -> Vec<u8> {
             "",
             0,
             0,
-            "src_addr",
+            "MyComp",
             0,
             0,
-            "dest_addr",
+            "4477711111",
             SubmitEsmClass::Default as u8,
             0x34,
             1,

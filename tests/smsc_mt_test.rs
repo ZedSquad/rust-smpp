@@ -62,7 +62,11 @@ async fn when_we_receive_submit_sm_we_respond_with_resp() {
             let msgid = "mymessage";
             Ok((
                 SubmitSmRespPdu::new(msgid).unwrap(),
-                MessageUniqueKey::new("mttest", msgid, "dest"),
+                MessageUniqueKey::new(
+                    String::from("mttest"),
+                    String::from(msgid),
+                    String::from("dest"),
+                ),
             ))
         }
     }

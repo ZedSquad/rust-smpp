@@ -12,8 +12,8 @@ use crate::pdu::{CheckOutcome, Pdu, PduParseError, PduParseErrorBody};
 
 #[derive(Clone, Eq, Hash, PartialEq)]
 pub struct EsmeId {
-    system_id: AsciiString,
-    system_type: AsciiString,
+    pub system_id: AsciiString,
+    pub system_type: AsciiString,
 }
 
 pub struct SmppConnection {

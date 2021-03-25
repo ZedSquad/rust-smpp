@@ -117,8 +117,12 @@ impl TestServer {
         Ok(server)
     }
 
-    pub async fn receive_pdu(&self, pdu: Pdu) -> AsyncResult<()> {
-        self.smsc.lock().await.receive_pdu(pdu).await
+    pub async fn receive_pdu(
+        &self,
+        namespace_id: &str,
+        pdu: Pdu,
+    ) -> AsyncResult<()> {
+        self.smsc.lock().await.receive_pdu(namespace_id, pdu).await
     }
 }
 

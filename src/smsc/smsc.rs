@@ -78,16 +78,23 @@ impl Smsc {
         Ok(())
     }
 
-    pub async fn receive_pdu(&mut self, pdu: Pdu) -> AsyncResult<()> {
+    pub async fn receive_pdu(
+        &mut self,
+        namespace_id: &str,
+        pdu: Pdu,
+    ) -> AsyncResult<()> {
         // TODO: consider retrying after a delay if unable to match DR
         // TODO: handle MOs separately from DRs
         // TODO: maybe return a deliver_sm_resp on failure?
         info!("<= receive_pdu() {:?}", pdu);
         match pdu.body() {
             PduBody::DeliverSm(body) => {
-                match body.extract_receipted_message_id() {
-                    Some(message_id) => {
-                        self.receive_pdu_for_message(pdu, message_id).await
+                let k =
+                    MessageUniqueKey::from_dr(String::from(namespace_id), body);
+                match k {
+                    Some(message_unique_key) => {
+                        self.receive_pdu_for_message(pdu, message_unique_key)
+                            .await
                     }
                     None => {
                         Err("Could not extract message ID from supplied PDU."
@@ -104,9 +111,9 @@ impl Smsc {
     async fn receive_pdu_for_message(
         &mut self,
         pdu: Pdu,
-        message_id: String,
+        message_unique_key: MessageUniqueKey,
     ) -> AsyncResult<()> {
-        let conn = self.connection_for_message_id(&message_id).await?;
+        let conn = self.connection_for_message(message_unique_key).await?;
         // TODO: in order to support a window size to the client, we
         //       will need to put this PDU into a queue rather than writing
         //       it immediately here.
@@ -144,19 +151,32 @@ impl Smsc {
         message_unique_key: MessageUniqueKey,
         esme_id: EsmeId,
     ) {
+        // TODO: delete old entries in this map to keep the size bounded
         self.messages.insert(message_unique_key, esme_id);
     }
 
-    async fn connection_for_message_id(
+    async fn connection_for_message(
         &mut self,
-        message_id: &str,
+        message_unique_key: MessageUniqueKey,
     ) -> AsyncResult<Arc<SmppConnection>> {
-        if let Some(connection) = &self.connections.values().next() {
-            Ok(Arc::clone(connection))
+        if let Some(esme_id) = self.messages.get(&message_unique_key) {
+            if let Some(connection) = self.connections.get(esme_id) {
+                Ok(Arc::clone(connection))
+            } else {
+                Err(format!(
+                    "No client connection found with \
+                system_id='{}' system_type='{}'.",
+                    esme_id.system_id, esme_id.system_type
+                )
+                .into())
+            }
         } else {
             Err(format!(
-                "No client connection found for message with ID {}",
-                message_id
+                "No record found of message with \
+                namespaceId='{}', message_id='{}', destination_addr='{}'",
+                message_unique_key.namespace_id,
+                message_unique_key.message_id,
+                message_unique_key.destination_addr
             )
             .into())
         }

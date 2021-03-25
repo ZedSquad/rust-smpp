@@ -27,11 +27,14 @@ async fn when_we_receive_deliver_sm_for_a_message_we_provide_it_to_client() {
         .send_and_expect_response(&submit_sm, &submit_sm_resp)
         .await;
 
-    let deliver_sm_pdu = new_deliver_sm_pdu(b"id:8765");
+    let deliver_sm_pdu = new_deliver_sm_pdu(format!("id:{}", msgid).as_bytes());
     let mut deliver_sm = Vec::new();
     deliver_sm_pdu.write(&mut deliver_sm).await.unwrap();
 
-    t.server.receive_pdu(deliver_sm_pdu).await.unwrap();
+    t.server
+        .receive_pdu("testsystem", deliver_sm_pdu)
+        .await
+        .unwrap();
 
     let resp = t.client.read_n(deliver_sm.len()).await;
     assert_eq!(bytes_as_string(&resp), bytes_as_string(&deliver_sm));
@@ -49,11 +52,15 @@ impl SmscLogic for Logic {
 
     async fn submit_sm(
         &mut self,
-        _pdu: &SubmitSmPdu,
+        pdu: &SubmitSmPdu,
     ) -> Result<(SubmitSmRespPdu, MessageUniqueKey), SubmitSmError> {
         Ok((
             SubmitSmRespPdu::new(&self.msgid).unwrap(),
-            MessageUniqueKey::new("testsystem", &self.msgid, ""),
+            MessageUniqueKey::new(
+                String::from("testsystem"),
+                self.msgid.clone(),
+                pdu.destination_addr(),
+            ),
         ))
     }
 }
@@ -66,10 +73,10 @@ fn new_deliver_sm_pdu(short_message: &[u8]) -> Pdu {
             "",
             0,
             0,
-            "src_addr",
+            "447777222222",
             0,
             0,
-            "dest_addr",
+            "MyCompany",
             DeliverEsmClass::SmscDeliveryReceipt as u8,
             0x34,
             1,
@@ -97,10 +104,10 @@ async fn new_submit_sm(sequence_number: u32) -> Vec<u8> {
             "",
             0,
             0,
-            "src_addr",
+            "MyCompany",
             0,
             0,
-            "dest_addr",
+            "447777222222",
             SubmitEsmClass::Default as u8,
             0x34,
             1,
