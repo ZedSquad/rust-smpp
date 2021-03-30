@@ -27,7 +27,9 @@ async fn when_we_receive_deliver_sm_for_a_message_we_provide_it_to_client() {
         .send_and_expect_response(&submit_sm, &submit_sm_resp)
         .await;
 
-    let deliver_sm_pdu = new_deliver_sm_pdu(format!("id:{}", msgid).as_bytes());
+    let deliver_sm_pdu = new_deliver_sm_pdu(
+        format!("id:{} submit date:2103301649", msgid).as_bytes(),
+    );
     let mut deliver_sm = Vec::new();
     deliver_sm_pdu.write(&mut deliver_sm).await.unwrap();
 
@@ -88,7 +90,6 @@ fn new_deliver_sm_pdu(short_message: &[u8]) -> Pdu {
             0,
             short_message,
             // Later: Issue#6: enforce meaning of e.g. esm_class
-            // Later: Issue#7: parse DR body fully
         )
         .unwrap()
         .into(),

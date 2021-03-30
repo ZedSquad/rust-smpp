@@ -430,8 +430,10 @@ dependencies = [
  "bytes",
  "env_logger",
  "futures",
+ "lazy_static",
  "log",
  "once_cell",
+ "regex",
  "serde",
  "tokio",
 ]

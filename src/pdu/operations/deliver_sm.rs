@@ -1,5 +1,6 @@
+use regex::Regex;
 use std::io;
-use std::str::from_utf8;
+use std::str;
 
 use crate::pdu::data::sm_data::SmData;
 use crate::pdu::formats::WriteStream;
@@ -70,14 +71,16 @@ impl DeliverSmPdu {
     }
 
     pub fn extract_receipted_message_id(&self) -> Option<String> {
-        if self.0.short_message.value.starts_with(b"id:") {
-            // Later: Issue#7: assumes the whole short message is just id
-            from_utf8(&self.0.short_message.value[3..])
-                .ok()
-                .map(String::from)
-        } else {
-            None
+        lazy_static! {
+            static ref RE: Regex = Regex::new(r"(?i)\bid:(\S*)(\s|$)").unwrap();
         }
+
+        str::from_utf8(&self.0.short_message.value)
+            .ok()
+            .and_then(|sm| {
+                RE.captures(sm)
+                    .map(|caps| String::from(caps.get(1).unwrap().as_str()))
+            })
     }
 
     pub fn source_addr(&self) -> String {
@@ -91,35 +94,82 @@ mod tests {
 
     #[test]
     fn when_id_is_at_start_of_short_message_and_no_tlv_we_can_extract_id() {
-        let deliver_sm = DeliverSmPdu::new(
-            "",
-            0,
-            0,
-            "",
-            0,
-            0,
-            "",
-            0,
-            0,
-            0,
-            "",
-            "",
-            0,
-            0,
-            0,
-            0,
-            b"id:0123456789",
-        )
-        .unwrap();
         assert_eq!(
-            deliver_sm.extract_receipted_message_id().unwrap(),
+            dr("id:0123456789").extract_receipted_message_id().unwrap(),
             "0123456789"
         );
+    }
+
+    #[test]
+    fn can_parse_short_message_from_appendix_b() {
+        let msg = dr("id:2345678901   sub:001   dlvrd:001   \
+             submit   date:2103291550   donedate:2103291551 \
+             stat:DELIVRD err:AOK \
+             Text:012345678 abcdefghij");
+
+        assert_eq!(msg.extract_receipted_message_id().unwrap(), "2345678901");
+    }
+
+    #[test]
+    fn can_parse_more_realistic_dr_short_messages() {
+        assert_eq!(
+            dr("id:2236192998 sub:001 dlvrd:001 submit date:1606160544 \
+                done date:1606160544 stat:DELIVRD \
+                err:000 text:\u{0006}\u{0005}\u{0004}\u{0015}y\000\000\
+                FOO-BARR?v=3;")
+            .extract_receipted_message_id()
+            .unwrap(),
+            "2236192998"
+        );
+        assert_eq!(
+            dr(
+                "iD:1A2a71714437 submt daTE:1606161059 doNE date:1606161059 \
+               sTat:DELIvRD eRr:0a0z0"
+            )
+            .extract_receipted_message_id()
+            .unwrap(),
+            "1A2a71714437"
+        );
+        assert_eq!(
+            dr("iD:1A:-/2a71714437 submt daTE:1606161059 \
+                doNE date:1606161059 sTat:DELIvRD eRr:0a0z0")
+            .extract_receipted_message_id()
+            .unwrap(),
+            "1A:-/2a71714437"
+        );
+        assert_eq!(
+            dr("submit date:1404161533 id::1-/2345:67890: sub:001 \
+                dlvrd:001 done date:1404161535 stat:DELIVRD")
+            .extract_receipted_message_id()
+            .unwrap(),
+            ":1-/2345:67890:"
+        );
+        assert_eq!(
+            dr("id:632166473 sub:001 dlvrd:001 submit date:1907101637 \
+                done date:1907101637 stat:UNDELIV err:MI:0024, text:")
+            .extract_receipted_message_id()
+            .unwrap(),
+            "632166473"
+        );
+        assert_eq!(
+            dr("submit date:1404161533 id:123456 sub:001 dlvrd:001 \
+                done date:1404161535 stat:DELIVRD")
+            .extract_receipted_message_id()
+            .unwrap(),
+            "123456"
+        );
+    }
+
+    fn dr(short_message: &str) -> DeliverSmPdu {
+        let sm = short_message.as_bytes();
+        DeliverSmPdu::new(
+            "", 0, 0, "", 0, 0, "", 0, 0, 0, "", "", 0, 0, 0, 0, sm,
+        )
+        .unwrap()
     }
 }
 
 // Later: Issue#2: Extract message id from receipted_message_id TLV
-// Later: Issue#7: parse short_message more fully - e.g. id not at start
 // Later: Issue#17: Explicitly allow/disallow short_message ids longer than 10?
 // Later: Issue#17: Explicitly allow/disallow short_message ids not decimal?
 // Later: Issue#17: https://smpp.org/SMPP_v3_4_Issue1_2.pdf Appendix B says ID

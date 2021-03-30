@@ -1,3 +1,6 @@
+#[macro_use]
+extern crate lazy_static;
+
 pub mod async_result;
 pub mod message_unique_key;
 pub mod pdu;
