@@ -175,3 +175,4 @@ mod tests {
 // Later: Issue#17: https://smpp.org/SMPP_v3_4_Issue1_2.pdf Appendix B says ID
 //       is NULL-terminated ("C-Octet String (Decimal)"), but that
 //       seems unlikely - check real-world usage.
+// Later: Issue#18: Parse message id from message_content TLV
