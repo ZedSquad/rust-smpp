@@ -371,6 +371,7 @@ mod tests {
 
     use super::*;
     use crate::pdu::esm_class::{SubmitMessageMode, SubmitMessageType};
+    use crate::pdu::tlvs::{KnownTlvTag, Tlv, Tlvs};
     use crate::pdu::SubmitEsmClass;
 
     const BIND_TRANSMITTER_RESP_PDU_PLUS_EXTRA: &[u8; 0x1b + 0xa] =
@@ -709,7 +710,8 @@ mod tests {
                     0x00,
                     0x03,
                     0x00,
-                    b"hihi"
+                    b"hihi",
+                    Tlvs::new(),
                 )
                 .unwrap()
                 .into()
@@ -742,6 +744,7 @@ mod tests {
                 0x03,
                 0x07,
                 b"hihi\xfe",
+                Tlvs::new(),
             )
             .unwrap()
             .into(),
@@ -803,7 +806,64 @@ mod tests {
                     0x00,
                     0x03,
                     0x00,
-                    &[]
+                    &[],
+                    Tlvs::new(),
+                )
+                .unwrap()
+                .into()
+            )
+            .unwrap()
+        );
+    }
+
+    #[test]
+    fn parse_valid_submit_sm_with_tlvs() {
+        const PDU: &[u8; 0x3e] = b"\
+            \x00\x00\x00\x3e\
+            \x00\x00\x00\x04\
+            \x00\x00\x00\x00\
+            \x00\x00\x00\x03\
+            \x00\
+            \x00\x00447000123123\x00\
+            \x00\x00447111222222\x00\
+            \x00\x01\x01\x00\x00\x01\x00\x03\
+            \x00\x00\
+            \x00\x0e\
+            \x00\x01\
+            \x01\
+            ";
+        // 000e means tag=source_network_type
+        // 0001 means length=1
+        // 01   means value=GSM
+
+        let mut cursor = Cursor::new(&PDU[..]);
+        assert_eq!(
+            Pdu::parse(&mut cursor).unwrap(),
+            Pdu::new(
+                0x00000000,
+                0x00000003,
+                SubmitSmPdu::new(
+                    "",
+                    0x00,
+                    0x00,
+                    "447000123123",
+                    0x00,
+                    0x00,
+                    "447111222222",
+                    SubmitEsmClass::Default as u8,
+                    0x01,
+                    0x01,
+                    "",
+                    "",
+                    0x01,
+                    0x00,
+                    0x03,
+                    0x00,
+                    &[],
+                    Tlvs::from(&[Tlv::new(
+                        KnownTlvTag::source_network_type,
+                        &[0x01]
+                    )])
                 )
                 .unwrap()
                 .into()
@@ -1013,6 +1073,7 @@ mod tests {
                 0x03,
                 0x07,
                 b"hihi\xfe",
+                Tlvs::new(),
             )
             .unwrap()
             .into(),
@@ -1035,6 +1096,65 @@ mod tests {
                 \x03\x04447111222222\x00\
                 \x05\x01\x01\x00\x00\x01\x06\x03\
                 \x07\x05hihi\xfe"
+        );
+    }
+
+    #[tokio::test]
+    async fn write_submit_sm_with_message_in_tlvs() {
+        let pdu = Pdu::new(
+            0x00000000,
+            0x00000003,
+            SubmitSmPdu::new(
+                "",
+                0x01,
+                0x02,
+                "447000123123",
+                0x03,
+                0x04,
+                "447111222222",
+                0x05,
+                0x01,
+                0x01,
+                "",
+                "",
+                0x01,
+                0x06,
+                0x03,
+                0x07,
+                b"",
+                Tlvs::from(&[
+                    Tlv::new(KnownTlvTag::message_payload, "hello".as_bytes()),
+                    Tlv::new(KnownTlvTag::dest_bearer_type, &[0x0001]),
+                ]),
+            )
+            .unwrap()
+            .into(),
+        )
+        .unwrap();
+
+        let mut output = Vec::new();
+        pdu.write(&mut output).await.unwrap();
+
+        assert_eq!(output.len(), 0x47);
+        assert_eq!(
+            output,
+            b"\
+                \x00\x00\x00\x47\
+                \x00\x00\x00\x04\
+                \x00\x00\x00\x00\
+                \x00\x00\x00\x03\
+                \x00\
+                \x01\x02447000123123\x00\
+                \x03\x04447111222222\x00\
+                \x05\x01\x01\x00\x00\x01\x06\x03\
+                \x07\x00\
+                \x04\x24\
+                \x00\x05\
+                hello\
+                \x00\x07\
+                \x00\x01\
+                \x01\
+                "
         );
     }
 
@@ -1074,7 +1194,8 @@ mod tests {
                     0x00,
                     0x03,
                     0x00,
-                    &[]
+                    &[],
+                    Tlvs::new(),
                 )
                 .unwrap()
                 .into()

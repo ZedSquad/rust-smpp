@@ -1,6 +1,7 @@
 use async_trait::async_trait;
 
 use smpp::message_unique_key::MessageUniqueKey;
+use smpp::pdu::tlvs::Tlvs;
 use smpp::pdu::{
     DeliverEsmClass, DeliverSmPdu, Pdu, SubmitEsmClass, SubmitSmPdu,
     SubmitSmRespPdu,
@@ -167,6 +168,7 @@ fn dr(sequence_number: u32) -> Pdu {
             3,
             0,
             format!("id:{}", sequence_number).as_bytes(),
+            Tlvs::new(),
         )
         .unwrap()
         .into(),
@@ -196,6 +198,7 @@ async fn mt(sequence_number: u32) -> Vec<u8> {
             3,
             0,
             b"dr \xffpls",
+            Tlvs::new(),
         )
         .unwrap()
         .into(),

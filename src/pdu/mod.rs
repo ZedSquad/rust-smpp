@@ -6,6 +6,7 @@ mod operations;
 mod pdu;
 mod pduparseerror;
 mod status;
+pub mod tlvs;
 mod validate_command_length;
 
 pub use check::{CheckError, CheckOutcome};

@@ -4,6 +4,7 @@ use std::str;
 
 use crate::pdu::data::sm_data::SmData;
 use crate::pdu::formats::WriteStream;
+use crate::pdu::tlvs::Tlvs;
 use crate::pdu::PduParseError;
 
 #[derive(Debug, PartialEq)]
@@ -28,6 +29,7 @@ impl DeliverSmPdu {
         data_coding: u8,
         sm_default_msg_id: u8,
         short_message: &[u8],
+        tlvs: Tlvs,
     ) -> Result<Self, PduParseError> {
         // Later: Issue#6: validate esm_class for the type of message this is?
         Ok(Self(SmData::new(
@@ -48,6 +50,7 @@ impl DeliverSmPdu {
             data_coding,
             sm_default_msg_id,
             short_message,
+            tlvs,
         )?))
     }
 
@@ -162,8 +165,9 @@ mod tests {
 
     fn dr(short_message: &str) -> DeliverSmPdu {
         let sm = short_message.as_bytes();
+        let tlvs = Tlvs::new();
         DeliverSmPdu::new(
-            "", 0, 0, "", 0, 0, "", 0, 0, 0, "", "", 0, 0, 0, 0, sm,
+            "", 0, 0, "", 0, 0, "", 0, 0, 0, "", "", 0, 0, 0, 0, sm, tlvs,
         )
         .unwrap()
     }

@@ -1,6 +1,7 @@
 use async_trait::async_trait;
 
 use smpp::message_unique_key::MessageUniqueKey;
+use smpp::pdu::tlvs::Tlvs;
 use smpp::pdu::{
     DeliverEsmClass, DeliverSmPdu, Pdu, SubmitEsmClass, SubmitSmPdu,
     SubmitSmRespPdu,
@@ -89,6 +90,7 @@ fn new_deliver_sm_pdu(short_message: &[u8]) -> Pdu {
             3,
             0,
             short_message,
+            Tlvs::new(),
             // Later: Issue#6: enforce meaning of e.g. esm_class
         )
         .unwrap()
@@ -119,6 +121,7 @@ async fn new_submit_sm(sequence_number: u32) -> Vec<u8> {
             3,
             0,
             b"dr \xffpls",
+            Tlvs::new(),
         )
         .unwrap()
         .into(),

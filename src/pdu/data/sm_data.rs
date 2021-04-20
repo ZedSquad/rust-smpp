@@ -2,6 +2,7 @@ use std::{convert::TryInto, io};
 
 use crate::pdu::formats::{COctetString, Integer1, OctetString, WriteStream};
 use crate::pdu::pduparseerror::fld;
+use crate::pdu::tlvs::Tlvs;
 use crate::pdu::{PduParseError, PduParseErrorBody};
 
 const MAX_LENGTH_SERVICE_TYPE: usize = 6;
@@ -30,7 +31,7 @@ pub struct SmData {
     data_coding: Integer1,
     sm_default_msg_id: Integer1,
     pub short_message: OctetString,
-    // Issue#2: TLVs
+    tlvs: Tlvs,
 }
 
 impl SmData {
@@ -52,6 +53,7 @@ impl SmData {
         data_coding: u8,
         sm_default_msg_id: u8,
         short_message: &[u8],
+        tlvs: Tlvs,
     ) -> Result<Self, PduParseError> {
         validate_length_1_or_17(
             "schedule_delivery_time",
@@ -110,6 +112,7 @@ impl SmData {
                     MAX_LENGTH_SHORT_MESSAGE,
                 ),
             )?,
+            tlvs,
         })
     }
 
@@ -135,6 +138,7 @@ impl SmData {
             .write(stream)
             .await?;
         self.short_message.write(stream).await?;
+        self.tlvs.write(stream).await?;
         Ok(())
     }
 
@@ -185,6 +189,7 @@ impl SmData {
                 MAX_LENGTH_SHORT_MESSAGE,
             ),
         )?;
+        let tlvs = Tlvs::read(bytes)?;
 
         validate_length_1_or_17(
             "schedule_delivery_time",
@@ -194,7 +199,7 @@ impl SmData {
             "validity_period",
             validity_period.value.len(),
         )?;
-        // Issue#2: check EITHER short_message, or message_payload TLV
+        // Issue#2: vldt we have EITHER short_message, or message_payload TLV
 
         Ok(Self {
             service_type,
@@ -214,6 +219,7 @@ impl SmData {
             data_coding,
             sm_default_msg_id,
             short_message,
+            tlvs,
         })
     }
 
