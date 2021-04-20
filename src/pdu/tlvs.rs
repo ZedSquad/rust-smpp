@@ -66,7 +66,7 @@ impl KnownTlvTag {
 #[derive(Clone, Debug, PartialEq)]
 pub struct Tlv {
     pub raw_tag: u16,
-    value: Vec<u8>,
+    pub value: Vec<u8>,
 }
 
 impl Tlv {
@@ -161,6 +161,18 @@ impl Tlvs {
             tlv.write(stream).await?;
         }
         Ok(())
+    }
+
+    pub fn get(&self, tag: KnownTlvTag) -> Option<Tlv> {
+        self.get_unknown(ToPrimitive::to_u16(&tag).unwrap())
+    }
+
+    pub fn get_unknown(&self, tag: u16) -> Option<Tlv> {
+        self.values
+            .iter()
+            .filter(|&tlv| tlv.raw_tag == tag)
+            .next()
+            .map(Tlv::clone)
     }
 }
 
@@ -281,5 +293,24 @@ mod tests {
                 0xff, 0xff, 0x00, 0x04, 0, 1, 2, 3, 0x12, 0x03, 0x00, 0x01, 89,
             ]
         );
+    }
+
+    #[test]
+    fn can_get_existing_tlv_from_list() {
+        let tlv1 = Tlv::new(KnownTlvTag::sms_signal, &[1]);
+        let tlv2 = Tlv::new(KnownTlvTag::message_payload, "abc".as_bytes());
+        let tlv3 = Tlv::new_unknown(0xffff, &[3, 2]);
+        let tlvs = Tlvs::from(&[tlv1.clone(), tlv2.clone(), tlv3.clone()]);
+        assert_eq!(tlvs.get(KnownTlvTag::message_payload), Some(tlv2));
+        assert_eq!(tlvs.get_unknown(0xffff), Some(tlv3));
+    }
+
+    #[test]
+    fn getting_nonexistent_tlv_returns_none() {
+        let tlv1 = Tlv::new(KnownTlvTag::sms_signal, &[1]);
+        let tlv2 = Tlv::new(KnownTlvTag::message_payload, "abc".as_bytes());
+        let tlv3 = Tlv::new_unknown(0xffff, &[3, 2]);
+        let tlvs = Tlvs::from(&[tlv1.clone(), tlv2.clone(), tlv3.clone()]);
+        assert_eq!(tlvs.get(KnownTlvTag::dpf_result), None);
     }
 }

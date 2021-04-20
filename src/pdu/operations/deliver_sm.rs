@@ -4,7 +4,7 @@ use std::str;
 
 use crate::pdu::data::sm_data::SmData;
 use crate::pdu::formats::WriteStream;
-use crate::pdu::tlvs::Tlvs;
+use crate::pdu::tlvs::{KnownTlvTag, Tlvs};
 use crate::pdu::PduParseError;
 
 #[derive(Debug, PartialEq)]
@@ -74,6 +74,15 @@ impl DeliverSmPdu {
     }
 
     pub fn extract_receipted_message_id(&self) -> Option<String> {
+        if let Some(tlv) = self.0.tlvs.get(KnownTlvTag::receipted_message_id) {
+            return String::from_utf8(tlv.value).ok().map(|mut s| {
+                if s.ends_with('\0') {
+                    s.truncate(s.len() - 1)
+                }
+                s
+            });
+        }
+
         lazy_static! {
             static ref RE: Regex = Regex::new(r"(?i)\bid:(\S*)(\s|$)").unwrap();
         }
@@ -94,6 +103,7 @@ impl DeliverSmPdu {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::pdu::tlvs::{KnownTlvTag, Tlv};
 
     #[test]
     fn when_id_is_at_start_of_short_message_and_no_tlv_we_can_extract_id() {
@@ -163,6 +173,54 @@ mod tests {
         );
     }
 
+    #[test]
+    fn when_id_is_in_tlv_we_can_extract_it() {
+        assert_eq!(
+            dr_tlvs(
+                "",
+                Tlvs::from(&[Tlv::new(
+                    KnownTlvTag::receipted_message_id,
+                    "01234567890123456789".as_bytes()
+                )])
+            )
+            .extract_receipted_message_id()
+            .unwrap(),
+            "01234567890123456789"
+        );
+    }
+
+    #[test]
+    fn when_null_terminated_id_is_in_tlv_we_can_extract_it() {
+        assert_eq!(
+            dr_tlvs(
+                "",
+                Tlvs::from(&[Tlv::new(
+                    KnownTlvTag::receipted_message_id,
+                    "01234567890123456789\0".as_bytes()
+                )])
+            )
+            .extract_receipted_message_id()
+            .unwrap(),
+            "01234567890123456789"
+        );
+    }
+
+    #[test]
+    fn when_id_is_in_tlv_and_short_message_tlv_wins() {
+        assert_eq!(
+            dr_tlvs(
+                "id:abc",
+                Tlvs::from(&[Tlv::new(
+                    KnownTlvTag::receipted_message_id,
+                    "01234567890123456789".as_bytes()
+                )])
+            )
+            .extract_receipted_message_id()
+            .unwrap(),
+            "01234567890123456789"
+        );
+    }
+
     fn dr(short_message: &str) -> DeliverSmPdu {
         let sm = short_message.as_bytes();
         let tlvs = Tlvs::new();
@@ -171,9 +229,16 @@ mod tests {
         )
         .unwrap()
     }
+
+    fn dr_tlvs(short_message: &str, tlvs: Tlvs) -> DeliverSmPdu {
+        let sm = short_message.as_bytes();
+        DeliverSmPdu::new(
+            "", 0, 0, "", 0, 0, "", 0, 0, 0, "", "", 0, 0, 0, 0, sm, tlvs,
+        )
+        .unwrap()
+    }
 }
 
-// Later: Issue#2: Extract message id from receipted_message_id TLV
 // Later: Issue#17: Explicitly allow/disallow short_message ids longer than 10?
 // Later: Issue#17: Explicitly allow/disallow short_message ids not decimal?
 // Later: Issue#17: https://smpp.org/SMPP_v3_4_Issue1_2.pdf Appendix B says ID

@@ -1,7 +1,7 @@
 use async_trait::async_trait;
 
 use smpp::message_unique_key::MessageUniqueKey;
-use smpp::pdu::tlvs::Tlvs;
+use smpp::pdu::tlvs::{KnownTlvTag, Tlv, Tlvs};
 use smpp::pdu::{
     DeliverEsmClass, DeliverSmPdu, Pdu, SubmitEsmClass, SubmitSmPdu,
     SubmitSmRespPdu,
@@ -43,6 +43,41 @@ async fn when_we_receive_deliver_sm_for_a_message_we_provide_it_to_client() {
     assert_eq!(bytes_as_string(&resp), bytes_as_string(&deliver_sm));
 }
 
+#[tokio::test]
+async fn when_we_receive_deliver_sm_with_tlv_for_a_message_we_provide_it() {
+    let msgid = "ab87J";
+    let submit_sm = new_submit_sm(0x2f).await;
+    let submit_sm_resp = new_submit_sm_resp(0x2f, msgid).await;
+    let logic = Logic {
+        msgid: String::from(msgid),
+    };
+
+    let mut t = TestSetup::new_with_logic(logic).await;
+    t.client.bind_transceiver().await;
+
+    t.client
+        .send_and_expect_response(&submit_sm, &submit_sm_resp)
+        .await;
+
+    let deliver_sm_pdu = new_deliver_sm_pdu_with_tlvs(
+        "".as_bytes(),
+        Tlvs::from(&[Tlv::new(
+            KnownTlvTag::receipted_message_id,
+            msgid.as_bytes(),
+        )]),
+    );
+    let mut deliver_sm = Vec::new();
+    deliver_sm_pdu.write(&mut deliver_sm).await.unwrap();
+
+    t.server
+        .receive_pdu("testsystem", deliver_sm_pdu)
+        .await
+        .unwrap();
+
+    let resp = t.client.read_n(deliver_sm.len()).await;
+    assert_eq!(bytes_as_string(&resp), bytes_as_string(&deliver_sm));
+}
+
 struct Logic {
     msgid: String,
 }
@@ -69,6 +104,10 @@ impl SmscLogic for Logic {
 }
 
 fn new_deliver_sm_pdu(short_message: &[u8]) -> Pdu {
+    new_deliver_sm_pdu_with_tlvs(short_message, Tlvs::new())
+}
+
+fn new_deliver_sm_pdu_with_tlvs(short_message: &[u8], tlvs: Tlvs) -> Pdu {
     Pdu::new(
         0x00,
         0x6d,
@@ -90,7 +129,7 @@ fn new_deliver_sm_pdu(short_message: &[u8]) -> Pdu {
             3,
             0,
             short_message,
-            Tlvs::new(),
+            tlvs,
             // Later: Issue#6: enforce meaning of e.g. esm_class
         )
         .unwrap()

@@ -31,7 +31,7 @@ pub struct SmData {
     data_coding: Integer1,
     sm_default_msg_id: Integer1,
     pub short_message: OctetString,
-    tlvs: Tlvs,
+    pub tlvs: Tlvs,
 }
 
 impl SmData {
