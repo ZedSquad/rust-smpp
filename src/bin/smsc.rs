@@ -1,3 +1,4 @@
+use clap::Clap;
 use env_logger::Env;
 use log::*;
 
@@ -6,11 +7,7 @@ use smpp::smsc;
 use smpp::smsc::SmscConfig;
 
 fn main() {
-    let smsc_config = SmscConfig {
-        bind_address: String::from("0.0.0.0:8080"),
-        max_open_sockets: 100,
-        system_id: String::from("rust_smpp"),
-    };
+    let smsc_config = SmscConfig::parse();
 
     env_logger::Builder::from_env(Env::default().default_filter_or("info"))
         .init();
