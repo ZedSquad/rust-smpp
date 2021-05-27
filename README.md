@@ -22,6 +22,16 @@ To launch with detailed logging:
 RUST_LOG=DEBUG cargo run
 ```
 
+## Publishing releases
+
+```bash
+cargo update
+vim CHANGELOG.md   # Set the version number
+cargo publish
+git tag $VERSION
+git push --tags
+```
+
 ## Reference documentation
 
 Development focusses on SMPP v3.4, since that is in wide use.  Docs:
