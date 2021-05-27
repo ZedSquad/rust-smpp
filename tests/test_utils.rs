@@ -29,7 +29,9 @@ impl SmscLogic for DefaultLogic {
 
     async fn submit_sm(
         &mut self,
+        _smsc: Arc<Mutex<Smsc>>,
         _pdu: &SubmitSmPdu,
+        _sequence_number: u32,
     ) -> Result<(SubmitSmRespPdu, MessageUniqueKey), SubmitSmError> {
         Err(SubmitSmError::InternalError)
     }

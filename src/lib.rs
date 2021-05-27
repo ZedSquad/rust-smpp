@@ -5,6 +5,7 @@ extern crate lazy_static;
 extern crate num_derive;
 
 pub mod async_result;
+pub mod examples;
 pub mod message_unique_key;
 pub mod pdu;
 pub mod smpp_connection;

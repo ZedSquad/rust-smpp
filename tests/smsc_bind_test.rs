@@ -1,8 +1,10 @@
 use async_trait::async_trait;
+use std::sync::Arc;
+use tokio::sync::Mutex;
 
 use smpp::message_unique_key::MessageUniqueKey;
 use smpp::pdu::{SubmitSmPdu, SubmitSmRespPdu};
-use smpp::smsc::{BindData, BindError, SmscLogic, SubmitSmError};
+use smpp::smsc::{BindData, BindError, Smsc, SmscLogic, SubmitSmError};
 
 mod test_utils;
 
@@ -72,7 +74,9 @@ async fn when_we_bind_with_incorrect_password_we_receive_error() {
 
         async fn submit_sm(
             &mut self,
+            _smsc: Arc<Mutex<Smsc>>,
             _pdu: &SubmitSmPdu,
+            _sequence_number: u32,
         ) -> Result<(SubmitSmRespPdu, MessageUniqueKey), SubmitSmError>
         {
             panic!("submit_sm not implemented");
@@ -129,12 +133,10 @@ async fn when_we_receive_enquire_link_we_respond_with_resp() {
         .await;
 }
 
-use std::sync::{Arc, Mutex};
-
 #[tokio::test]
 async fn when_we_receive_multiple_binds_we_can_keep_track() {
     struct TrackingLogic {
-        num_binds: Arc<Mutex<u32>>,
+        num_binds: Arc<std::sync::Mutex<u32>>,
     }
 
     #[async_trait]
@@ -149,14 +151,16 @@ async fn when_we_receive_multiple_binds_we_can_keep_track() {
 
         async fn submit_sm(
             &mut self,
+            _smsc: Arc<Mutex<Smsc>>,
             _pdu: &SubmitSmPdu,
+            _sequence_number: u32,
         ) -> Result<(SubmitSmRespPdu, MessageUniqueKey), SubmitSmError>
         {
             panic!("submit_sm not implemented");
         }
     }
 
-    let num_binds = Arc::new(Mutex::new(0));
+    let num_binds = Arc::new(std::sync::Mutex::new(0));
     let logic = TrackingLogic {
         num_binds: Arc::clone(&num_binds),
     };

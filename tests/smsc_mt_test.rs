@@ -1,8 +1,10 @@
 use async_trait::async_trait;
+use std::sync::Arc;
+use tokio::sync::Mutex;
 
 use smpp::message_unique_key::MessageUniqueKey;
 use smpp::pdu::{SubmitSmPdu, SubmitSmRespPdu};
-use smpp::smsc::{BindData, BindError, SmscLogic, SubmitSmError};
+use smpp::smsc::{BindData, BindError, Smsc, SmscLogic, SubmitSmError};
 
 mod test_utils;
 
@@ -56,7 +58,9 @@ async fn when_we_receive_submit_sm_we_respond_with_resp() {
 
         async fn submit_sm(
             &mut self,
+            _smsc: Arc<Mutex<Smsc>>,
             _pdu: &SubmitSmPdu,
+            _sequence_number: u32,
         ) -> Result<(SubmitSmRespPdu, MessageUniqueKey), SubmitSmError>
         {
             let msgid = "mymessage";

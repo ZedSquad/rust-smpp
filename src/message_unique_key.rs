@@ -34,14 +34,11 @@ impl MessageUniqueKey {
         }
     }
 
-    pub fn from_dr(
-        namespace_id: String,
-        deliver_sm_pdu: &DeliverSmPdu,
-    ) -> Option<Self> {
+    pub fn from_dr(namespace_id: String, pdu: &DeliverSmPdu) -> Option<Self> {
         // Use the source_addr from the DR as the destination_addr.  See
         // section 2.11 of https://smpp.org/SMPP_v3_4_Issue1_2.pdf
-        let destination_addr = deliver_sm_pdu.source_addr();
-        let message_id = deliver_sm_pdu.extract_receipted_message_id();
+        let destination_addr = pdu.source_addr();
+        let message_id = pdu.extract_receipted_message_id();
         message_id.map(|message_id| Self {
             namespace_id,
             message_id,

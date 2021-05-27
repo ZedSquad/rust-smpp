@@ -1,4 +1,6 @@
 use async_trait::async_trait;
+use std::sync::Arc;
+use tokio::sync::Mutex;
 
 use smpp::message_unique_key::MessageUniqueKey;
 use smpp::pdu::tlvs::{KnownTlvTag, Tlv, Tlvs};
@@ -6,7 +8,7 @@ use smpp::pdu::{
     DeliverEsmClass, DeliverSmPdu, Pdu, SubmitEsmClass, SubmitSmPdu,
     SubmitSmRespPdu,
 };
-use smpp::smsc::{BindData, BindError, SmscLogic, SubmitSmError};
+use smpp::smsc::{BindData, BindError, Smsc, SmscLogic, SubmitSmError};
 
 mod test_utils;
 
@@ -90,7 +92,9 @@ impl SmscLogic for Logic {
 
     async fn submit_sm(
         &mut self,
+        _smsc: Arc<Mutex<Smsc>>,
         pdu: &SubmitSmPdu,
+        _sequence_number: u32,
     ) -> Result<(SubmitSmRespPdu, MessageUniqueKey), SubmitSmError> {
         Ok((
             SubmitSmRespPdu::new(&self.msgid).unwrap(),

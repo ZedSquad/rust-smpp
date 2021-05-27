@@ -71,7 +71,27 @@ impl SubmitSmPdu {
         Ok(Self(self.0.validate_command_status(command_status)?))
     }
 
+    pub fn dest_addr_ton(&self) -> u8 {
+        self.0.dest_addr_ton.value
+    }
+
+    pub fn dest_addr_npi(&self) -> u8 {
+        self.0.dest_addr_npi.value
+    }
+
     pub fn destination_addr(&self) -> String {
         self.0.destination_addr.value.to_string()
+    }
+
+    pub fn source_addr_ton(&self) -> u8 {
+        self.0.source_addr_ton.value
+    }
+
+    pub fn source_addr_npi(&self) -> u8 {
+        self.0.source_addr_npi.value
+    }
+
+    pub fn source_addr(&self) -> String {
+        self.0.source_addr.value.to_string()
     }
 }

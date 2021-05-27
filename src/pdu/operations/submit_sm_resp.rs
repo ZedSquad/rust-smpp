@@ -81,4 +81,8 @@ impl SubmitSmRespPdu {
             (None, _) => Ok(self),
         }
     }
+
+    pub fn message_id(&self) -> Option<String> {
+        self.message_id.as_ref().map(|s| s.value.to_string())
+    }
 }

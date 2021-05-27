@@ -15,11 +15,11 @@ const MAX_LENGTH_SHORT_MESSAGE: usize = 254;
 #[derive(Debug, PartialEq)]
 pub struct SmData {
     service_type: COctetString,
-    source_addr_ton: Integer1,
-    source_addr_npi: Integer1,
+    pub source_addr_ton: Integer1,
+    pub source_addr_npi: Integer1,
     pub source_addr: COctetString,
-    dest_addr_ton: Integer1,
-    dest_addr_npi: Integer1,
+    pub dest_addr_ton: Integer1,
+    pub dest_addr_npi: Integer1,
     pub destination_addr: COctetString,
     esm_class: Integer1,
     protocol_id: Integer1,

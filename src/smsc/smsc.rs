@@ -84,7 +84,7 @@ impl Smsc {
         pdu: Pdu,
     ) -> AsyncResult<()> {
         // Later: Issue#5: consider retrying after a delay if unable to match DR
-        // Later: Issue#12: handle MOs separately from DRs
+        // Later: Issue#12: handle MOs
         info!("<= receive_pdu() {:?}", pdu);
         match pdu.body() {
             PduBody::DeliverSm(body) => {
@@ -117,6 +117,8 @@ impl Smsc {
         // will need to put this PDU into a queue rather than writing
         // it immediately here.
         tokio::spawn(async move {
+            // We schedule the write here, as a sort-of 1-message queue,
+            // so we return immediately, and the IO is done later.
             conn.write_pdu(&pdu).await.map_err(
                 |e| error!("Failed to send PDU to client: {}", e), // TODO: give information about the client here
             )
@@ -534,7 +536,12 @@ async fn handle_submit_sm_pdu<L: SmscLogic>(
 
     if let Some(esme_id) = connection.bound_esme_id() {
         let mut command_status = PduStatus::ESME_ROK;
-        let resp = match smsc_logic.lock().await.submit_sm(body).await {
+        let resp = match smsc_logic
+            .lock()
+            .await
+            .submit_sm(smsc.clone(), body, sequence_number)
+            .await
+        {
             Ok((resp, message_unique_key)) => {
                 smsc.lock().await.add_message(message_unique_key, esme_id);
                 resp
