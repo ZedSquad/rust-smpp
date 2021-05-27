@@ -6,6 +6,9 @@ In early development: a basic framework for an SMSC is done, but many features
 required for a robust service are missing.  See
 [Issues](https://gitlab.com/andybalaam/rust-smpp/-/issues).
 
+See also: [API docs](https://docs.rs/smpp) and
+[crates.io entry](https://crates.io/crates/smpp)
+
 ## Server application (SMSC)
 
 First, [install Rust](https://www.rust-lang.org/tools/install).
