@@ -2,7 +2,9 @@
 
 An [SMPP](https://smpp.org/) library for Rust.
 
-Currently in early development: not useful for anything.
+In early development: a basic framework for an SMSC is done, but many features
+required for a robust service are missing.  See
+[Issues](https://gitlab.com/andybalaam/rust-smpp/-/issues).
 
 ## Server application (SMSC)
 
