@@ -32,6 +32,12 @@ provide a different bind address, run:
 cargo run -- -b 0.0.0.0:23432
 ```
 
+You can also provide parameters as environment variables as described in help:
+
+```bash
+BIND_ADDRESS=0.0.0.0:23432 cargo run
+```
+
 To launch with detailed logging:
 
 ```bash
