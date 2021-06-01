@@ -14,4 +14,3 @@ run-test:
     cache:
         paths:
             - target/
-            - .cargo/
