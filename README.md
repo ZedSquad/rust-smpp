@@ -19,6 +19,25 @@ To launch an SMSC:
 cargo run
 ```
 
+To find parameters that you can provide on startup, run:
+
+```bash
+cargo run -- --help
+```
+
+`--` is what separates cargo arguments and binary arguments, so to 
+provide a different bind address, run:
+
+```bash
+cargo run -- -b 0.0.0.0:23432
+```
+
+You can also provide parameters as environment variables as described in help:
+
+```bash
+BIND_ADDRESS=0.0.0.0:23432 cargo run
+```
+
 To launch with detailed logging:
 
 ```bash
