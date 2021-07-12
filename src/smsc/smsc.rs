@@ -1,4 +1,9 @@
 use log::*;
+use smpp_pdu::pdu::{
+    BindReceiverRespPdu, BindTransceiverRespPdu, BindTransmitterRespPdu,
+    EnquireLinkRespPdu, GenericNackPdu, Pdu, PduBody, PduParseError, PduStatus,
+    SubmitSmPdu, SubmitSmRespPdu,
+};
 use std::collections::HashMap;
 use std::error;
 use std::fmt::{Display, Formatter};
@@ -12,11 +17,6 @@ use tokio::time::sleep;
 
 use crate::async_result::AsyncResult;
 use crate::message_unique_key::MessageUniqueKey;
-use crate::pdu::{
-    BindReceiverRespPdu, BindTransceiverRespPdu, BindTransmitterRespPdu,
-    EnquireLinkRespPdu, GenericNackPdu, Pdu, PduBody, PduParseError, PduStatus,
-    SubmitSmPdu, SubmitSmRespPdu,
-};
 use crate::smpp_connection::{EsmeId, SmppConnection};
 use crate::smsc::{SmscConfig, SmscLogic};
 

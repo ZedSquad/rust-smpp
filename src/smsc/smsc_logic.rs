@@ -1,11 +1,11 @@
 use async_trait::async_trait;
+use smpp_pdu::pdu::data::bind_data::BindData;
+use smpp_pdu::pdu::PduStatus;
+use smpp_pdu::pdu::{SubmitSmPdu, SubmitSmRespPdu};
 use std::sync::Arc;
 use tokio::sync::Mutex;
 
 use crate::message_unique_key::MessageUniqueKey;
-use crate::pdu::data::bind_data::BindData;
-use crate::pdu::PduStatus;
-use crate::pdu::{SubmitSmPdu, SubmitSmRespPdu};
 use crate::smsc::Smsc;
 
 pub enum BindError {

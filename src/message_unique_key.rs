@@ -1,4 +1,4 @@
-use crate::pdu::DeliverSmPdu;
+use smpp_pdu::pdu::DeliverSmPdu;
 
 /// A way to identify this message based on the message ID provided by
 /// some remove system.

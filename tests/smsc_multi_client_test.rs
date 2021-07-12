@@ -1,14 +1,13 @@
 use async_trait::async_trait;
-use std::sync::Arc;
-use tokio::sync::Mutex;
-
 use smpp::message_unique_key::MessageUniqueKey;
-use smpp::pdu::tlvs::Tlvs;
-use smpp::pdu::{
+use smpp::smsc::{BindData, BindError, Smsc, SmscLogic, SubmitSmError};
+use smpp_pdu::pdu::tlvs::Tlvs;
+use smpp_pdu::pdu::{
     DeliverEsmClass, DeliverSmPdu, Pdu, SubmitEsmClass, SubmitSmPdu,
     SubmitSmRespPdu,
 };
-use smpp::smsc::{BindData, BindError, Smsc, SmscLogic, SubmitSmError};
+use std::sync::Arc;
+use tokio::sync::Mutex;
 
 mod test_utils;
 

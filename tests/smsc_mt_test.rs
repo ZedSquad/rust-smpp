@@ -1,10 +1,9 @@
 use async_trait::async_trait;
+use smpp::message_unique_key::MessageUniqueKey;
+use smpp::smsc::{BindData, BindError, Smsc, SmscLogic, SubmitSmError};
+use smpp_pdu::pdu::{SubmitSmPdu, SubmitSmRespPdu};
 use std::sync::Arc;
 use tokio::sync::Mutex;
-
-use smpp::message_unique_key::MessageUniqueKey;
-use smpp::pdu::{SubmitSmPdu, SubmitSmRespPdu};
-use smpp::smsc::{BindData, BindError, Smsc, SmscLogic, SubmitSmError};
 
 mod test_utils;
 

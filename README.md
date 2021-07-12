@@ -49,6 +49,7 @@ RUST_LOG=DEBUG cargo run
 ```bash
 cargo update
 vim CHANGELOG.md   # Set the version number
+vim Cargo.toml     # Set the version number
 cargo publish
 git tag $VERSION
 git push --tags

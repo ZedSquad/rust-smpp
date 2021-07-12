@@ -2,16 +2,16 @@
 //! and allows you to bind if system_id==password.
 
 use async_trait::async_trait;
+use smpp_pdu::pdu::tlvs::{KnownTlvTag, Tlv, Tlvs};
+use smpp_pdu::pdu::{
+    DeliverEsmClass, DeliverSmPdu, Pdu, SubmitSmPdu, SubmitSmRespPdu,
+};
 use std::sync::Arc;
 use std::time::Duration;
 use tokio::sync::Mutex;
 use tokio::time;
 
 use crate::message_unique_key::MessageUniqueKey;
-use crate::pdu::tlvs::{KnownTlvTag, Tlv, Tlvs};
-use crate::pdu::{
-    DeliverEsmClass, DeliverSmPdu, Pdu, SubmitSmPdu, SubmitSmRespPdu,
-};
 use crate::smsc::{BindData, BindError, Smsc, SmscLogic, SubmitSmError};
 
 pub struct DrsAfter1Sec {}

@@ -1,5 +1,11 @@
 use async_trait::async_trait;
 use once_cell::sync::Lazy;
+use smpp::async_result::AsyncResult;
+use smpp::message_unique_key::MessageUniqueKey;
+use smpp::smsc::{
+    BindData, BindError, Smsc, SmscConfig, SmscLogic, SubmitSmError,
+};
+use smpp_pdu::pdu::{Pdu, SubmitSmPdu, SubmitSmRespPdu};
 use std::io;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
@@ -7,13 +13,6 @@ use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::TcpStream;
 use tokio::sync::Mutex;
 use tokio::time::{sleep, Duration};
-
-use smpp::async_result::AsyncResult;
-use smpp::message_unique_key::MessageUniqueKey;
-use smpp::pdu::{Pdu, SubmitSmPdu, SubmitSmRespPdu};
-use smpp::smsc::{
-    BindData, BindError, Smsc, SmscConfig, SmscLogic, SubmitSmError,
-};
 
 const TEST_BIND_URL: &str = "127.0.0.1";
 

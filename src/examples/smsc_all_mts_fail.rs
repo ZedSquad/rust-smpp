@@ -2,11 +2,11 @@
 //! to all incoming MTs with an error.
 
 use async_trait::async_trait;
+use smpp_pdu::pdu::{SubmitSmPdu, SubmitSmRespPdu};
 use std::sync::Arc;
 use tokio::sync::Mutex;
 
 use crate::message_unique_key::MessageUniqueKey;
-use crate::pdu::{SubmitSmPdu, SubmitSmRespPdu};
 use crate::smsc::{BindData, BindError, Smsc, SmscLogic, SubmitSmError};
 
 pub struct AllMtsFail {}
