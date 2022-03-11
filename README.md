@@ -80,5 +80,6 @@ on mastodon on
 rust-smpp is distributed under the terms of both the [MIT license](LICENSE-MIT)
 and the [Apache License (Version 2.0)](LICENSE-APACHE).
 
-This project is developed in both my work and personal time, and released under
-my personal copyright with the agreement of my employer.
+This project is developed in my personal time. A previous employer (OpenMarket)
+allowed me to develop it on work time, and release it under my personal
+copyright.
