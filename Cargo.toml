@@ -14,14 +14,11 @@ categories = ["network-programming", "parser-implementations"]
 edition = "2018"
 include = ["src/", "LICENSE-*", "README.md", "CHANGELOG.md"]
 
-[lib]
-path = "src/lib.rs"
-  
 [dependencies]
 ascii = "1.0"
 async-trait = ">=0.1.42"
 bytes = "1"
-clap = "3.0.0-beta.2"
+clap = "3.2.25"
 env_logger = "0.8.*"
 futures = { version = "0.3.*" }
 log = "0.4.*"
