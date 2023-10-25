@@ -18,7 +18,7 @@ include = ["src/", "LICENSE-*", "README.md", "CHANGELOG.md"]
 ascii = "1.0"
 async-trait = ">=0.1.42"
 bytes = "1"
-clap = "3.2.25"
+clap = { version = "3.2.25", features = ["derive", "env"] }
 env_logger = "0.8.*"
 futures = { version = "0.3.*" }
 log = "0.4.*"
@@ -27,4 +27,4 @@ smpp-pdu = "0.1"
 tokio = { version = ">=1.0.1", features = ["full"] }
 
 [dev-dependencies]
-once_cell = "1.5.*"
+once_cell = "1.18"
