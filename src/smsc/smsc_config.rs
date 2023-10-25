@@ -1,7 +1,7 @@
-use clap::Clap;
+use clap::Parser;
 
 /// Short Message Service Center (SMSC) in Rust
-#[derive(Clap, Clone, Debug)]
+#[derive(Parser, Clone, Debug)]
 #[clap(name = "smsc")]
 pub struct SmscConfig {
     /// Address to bind on
